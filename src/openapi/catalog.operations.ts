@@ -1,0 +1,440 @@
+import { z, type ZodTypeAny } from 'zod';
+import * as admin from '../modules/admin/admin.schema.js';
+import * as compensation from '../modules/compensation/compensation.schema.js';
+import * as exportSchemas from '../modules/exports/export.schema.js';
+import * as files from '../modules/files/file.schema.js';
+import * as jobs from '../modules/jobs/job.schema.js';
+import * as matching from '../modules/matching/matching.schema.js';
+import * as messaging from '../modules/messaging/messaging.schema.js';
+import * as notifications from '../modules/notifications/notification.schema.js';
+import * as organisations from '../modules/organisations/organisation.schema.js';
+import * as performance from '../modules/performance/performance.schema.js';
+import * as pipeline from '../modules/pipeline/pipeline.schema.js';
+import * as placements from '../modules/placements/placement.schema.js';
+import * as publicSchemas from '../modules/public/public.schema.js';
+import * as reporting from '../modules/reporting/reporting.schema.js';
+import * as search from '../modules/search/search.schema.js';
+import * as support from '../modules/support/support.schema.js';
+import * as talents from '../modules/talents/talent.schema.js';
+import * as vetting from '../modules/vetting/vetting.schema.js';
+import * as work from '../modules/work/work.schema.js';
+import * as workforce from '../modules/workforce/workforce.schema.js';
+import type { HttpMethod, OperationDoc } from './openapi.types.js';
+
+interface Group { prefix: string; tag: string; routes: string[]; public?: boolean }
+
+const groups: Group[] = [
+  { prefix: '/api/v1/public', tag: 'public', public: true, routes: ['POST /demo-requests','POST /contact-requests','POST /newsletter/subscribe','POST /newsletter/confirm','POST /newsletter/unsubscribe'] },
+  { prefix: '/api/v1/jobs', tag: 'jobs', public: true, routes: ['GET /','GET /{jobId}'] },
+  { prefix: '/api/v1/jobs', tag: 'applications', routes: ['POST /{jobId}/applications'] },
+  { prefix: '/api/v1/public/jobs', tag: 'jobs', public: true, routes: ['GET /','GET /{jobId}'] },
+  { prefix: '/api/v1/public/jobs', tag: 'applications', routes: ['POST /{jobId}/applications'] },
+  { prefix: '/api/v1/talents', tag: 'talents', public: true, routes: ['GET /skills/categories','GET /skills','GET /','GET /{profileId}'] },
+  { prefix: '/api/v1/public/talents', tag: 'talents', public: true, routes: ['GET /skills/categories','GET /skills','GET /','GET /{profileId}'] },
+  { prefix: '/api/v1/talents/me', tag: 'talents', routes: [
+    'GET /account','PATCH /account/preferences','GET /profile','PATCH /profile','PATCH /availability','PATCH /visibility','POST /onboarding/complete','PUT /files',
+    'POST /experience','PATCH /experience/{itemId}','DELETE /experience/{itemId}','POST /education','PATCH /education/{itemId}','DELETE /education/{itemId}',
+    'POST /certifications','PATCH /certifications/{itemId}','DELETE /certifications/{itemId}','POST /portfolio','PATCH /portfolio/{itemId}','DELETE /portfolio/{itemId}',
+    'POST /skills','PATCH /skills/{itemId}','DELETE /skills/{itemId}',
+    'GET /applications','POST /applications/{applicationId}/withdraw','GET /workforce/assignments','GET /interviews','GET /offers','POST /offers/{offerId}/respond',
+    'GET /tasks','GET /tasks/{taskId}','POST /tasks/{taskId}/status','POST /tasks/{taskId}/comments','POST /tasks/{taskId}/attachments',
+    'GET /time-entries','POST /time-entries','PATCH /time-entries/{timeEntryId}','POST /time-entries/{timeEntryId}/submit','GET /calendar','POST /calendar/{eventId}/respond',
+    'GET /performance-reviews','GET /performance-reviews/{reviewId}','POST /performance-reviews/{reviewId}/self-assessment','POST /performance-reviews/{reviewId}/respond',
+    'GET /vetting','POST /vetting','POST /vetting/{caseId}/withdraw','GET /placements','GET /placements/{placementId}','GET /compensation',
+  ] },
+  { prefix: '/api/v1/organisations', tag: 'organisations', routes: [
+    'GET /','GET /{organisationId}','PATCH /{organisationId}','GET /{organisationId}/onboarding','PATCH /{organisationId}/onboarding','POST /{organisationId}/onboarding/complete',
+    'GET /{organisationId}/addresses','POST /{organisationId}/addresses','PATCH /{organisationId}/addresses/{addressId}','DELETE /{organisationId}/addresses/{addressId}',
+    'GET /{organisationId}/settings','PATCH /{organisationId}/settings','GET /{organisationId}/members','GET /{organisationId}/roles',
+    'PATCH /{organisationId}/members/{membershipId}/role','POST /{organisationId}/members/{membershipId}/suspend','POST /{organisationId}/members/{membershipId}/reactivate','DELETE /{organisationId}/members/{membershipId}',
+    'GET /{organisationId}/invitations','POST /{organisationId}/invitations','POST /{organisationId}/invitations/{invitationId}/revoke','POST /{organisationId}/invitations/{invitationId}/resend',
+  ] },
+  { prefix: '/api/v1/organisations', tag: 'invitations', public: true, routes: ['GET /invitations/{token}'] },
+  { prefix: '/api/v1/organisations', tag: 'invitations', routes: ['POST /invitations/{token}/accept'] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'hiring', routes: [
+    'GET /jobs','POST /jobs','GET /jobs/{jobId}','PATCH /jobs/{jobId}','POST /jobs/{jobId}/publish','POST /jobs/{jobId}/pause','POST /jobs/{jobId}/close','POST /jobs/{jobId}/fill','POST /jobs/{jobId}/archive',
+    'GET /applications','GET /applications/{applicationId}','POST /applications/{applicationId}/status','GET /interviews','POST /interviews','PATCH /interviews/{interviewId}','POST /interviews/{interviewId}/cancel','POST /interviews/{interviewId}/outcome',
+    'GET /offers','POST /offers','PATCH /offers/{offerId}','POST /offers/{offerId}/send','POST /offers/{offerId}/withdraw',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'workforce', routes: [
+    'GET /team-members','GET /team-members/{staffAssignmentId}','PATCH /team-members/{staffAssignmentId}','POST /team-members/{staffAssignmentId}/manager','POST /team-members/{staffAssignmentId}/department','POST /team-members/{staffAssignmentId}/teams','POST /team-members/{staffAssignmentId}/offboard',
+    'GET /departments','POST /departments','PATCH /departments/{departmentId}','DELETE /departments/{departmentId}','GET /teams','POST /teams','PATCH /teams/{teamId}','DELETE /teams/{teamId}',
+    'GET /tasks','POST /tasks','GET /tasks/{taskId}','PATCH /tasks/{taskId}','POST /tasks/{taskId}/status','POST /tasks/{taskId}/comments','POST /tasks/{taskId}/attachments',
+    'GET /time-entries','POST /time-entries/{timeEntryId}/decision','GET /calendar','POST /calendar','GET /calendar/{eventId}','PATCH /calendar/{eventId}','POST /calendar/{eventId}/cancel',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'performance', routes: [
+    'GET /performance/periods','POST /performance/periods','GET /performance/periods/{periodId}','PATCH /performance/periods/{periodId}','POST /performance/periods/{periodId}/status','POST /performance/periods/{periodId}/metrics','PATCH /performance/periods/{periodId}/metrics/{metricId}',
+    'GET /performance/reviews','POST /performance/reviews','GET /performance/reviews/{reviewId}','PATCH /performance/reviews/{reviewId}','POST /performance/reviews/{reviewId}/feedback','PUT /performance/reviews/{reviewId}/results','POST /performance/reviews/{reviewId}/status',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'matching', routes: [
+    'GET /jobs/{jobId}/matches','POST /jobs/{jobId}/matches/recompute','GET /shortlists','POST /shortlists','GET /shortlists/{shortlistId}','PATCH /shortlists/{shortlistId}','POST /shortlists/{shortlistId}/archive','POST /shortlists/{shortlistId}/candidates','DELETE /shortlists/{shortlistId}/candidates/{candidateId}','POST /shortlists/{shortlistId}/notes',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'placements', routes: [
+    'GET /placements','GET /placements/{placementId}','PATCH /placements/{placementId}','POST /placements/{placementId}/status','GET /placements/{placementId}/replacement-eligibility',
+    'GET /replacements','POST /replacements','GET /replacements/{replacementId}','POST /replacements/{replacementId}/cancel','POST /replacements/{replacementId}/candidates/{candidateId}/respond',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'compensation', routes: [
+    'GET /compensation/agreements','POST /compensation/agreements','PATCH /compensation/agreements/{agreementId}','POST /compensation/agreements/{agreementId}/status','POST /compensation/adjustments',
+    'GET /payroll','POST /payroll','POST /payroll/{payrollPeriodId}/calculate','POST /payroll/{payrollPeriodId}/submit','POST /payroll/{payrollPeriodId}/approve','POST /payroll/{payrollPeriodId}/lock','POST /payroll/{payrollPeriodId}/reopen','POST /payroll/{payrollPeriodId}/void',
+    'GET /payments','POST /payments','POST /payments/{paymentId}/status',
+  ] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'exports', routes: ['GET /exports','POST /exports','GET /exports/{exportId}','GET /exports/{exportId}/download'] },
+  { prefix: '/api/v1/organisations/{organisationId}', tag: 'reporting', routes: ['GET /dashboard'] },
+  { prefix: '/api/v1/files', tag: 'files', routes: ['POST /uploads','POST /{fileId}/complete','GET /{fileId}','POST /{fileId}/download','DELETE /{fileId}'] },
+  { prefix: '/api/v1/notifications', tag: 'notifications', routes: ['GET /','POST /read-all','GET /preferences','PUT /preferences','POST /{notificationId}/read','DELETE /{notificationId}'] },
+  { prefix: '/api/v1/conversations', tag: 'messaging', routes: ['GET /','POST /','GET /{conversationId}','POST /{conversationId}/archive','POST /{conversationId}/leave','GET /{conversationId}/messages','POST /{conversationId}/messages','PATCH /{conversationId}/messages/{messageId}','DELETE /{conversationId}/messages/{messageId}','POST /{conversationId}/read'] },
+  { prefix: '/api/v1/support', tag: 'support', routes: ['GET /cases','POST /cases','GET /cases/{caseId}','POST /cases/{caseId}/notes','POST /cases/{caseId}/reopen'] },
+  { prefix: '/api/v1/search', tag: 'search', routes: ['GET /'] },
+  { prefix: '/api/v1/admin', tag: 'admin', routes: [
+    'GET /dashboard','GET /users','GET /users/{id}','POST /users/{id}/status','GET /organisations','GET /organisations/{id}','POST /organisations/{id}/status','POST /organisations/{id}/verification','GET /applications','GET /placements','GET /compensation/payroll','GET /compensation/payments','POST /jobs/{id}/moderation','GET /roles','POST /roles/grant','POST /roles/revoke','GET /leads/{kind}','PATCH /leads/{kind}/{id}','GET /audit','GET /configuration','PUT /configuration/feature-flags','PUT /configuration/policies','POST /announcements','GET /operations','POST /operations/jobs/{id}/retry',
+  ] },
+  { prefix: '/api/v1/admin/vetting', tag: 'admin', routes: ['GET /','GET /{caseId}','POST /{caseId}/assign','POST /{caseId}/assessments','POST /{caseId}/review'] },
+  { prefix: '/api/v1/admin/replacements', tag: 'admin', routes: ['GET /','POST /{replacementId}/decision','POST /{replacementId}/candidates'] },
+  { prefix: '/api/v1/admin/exports', tag: 'admin', routes: ['GET /','POST /','GET /{exportId}','GET /{exportId}/download'] },
+  { prefix: '/api/v1/admin/support', tag: 'admin', routes: ['GET /','GET /{caseId}','PATCH /{caseId}','POST /{caseId}/notes'] },
+];
+
+const genericData = z.record(z.unknown());
+const idempotencyHeaders = z.object({ 'Idempotency-Key': z.string().min(8).max(255) });
+
+const requestBodies = new Map<string, ZodTypeAny | null>([
+  ['post /api/v1/public/demo-requests', publicSchemas.demoRequestSchema],
+  ['post /api/v1/public/contact-requests', publicSchemas.contactRequestSchema],
+  ['post /api/v1/public/newsletter/subscribe', publicSchemas.newsletterSubscribeSchema],
+  ['post /api/v1/public/newsletter/confirm', publicSchemas.newsletterTokenSchema],
+  ['post /api/v1/public/newsletter/unsubscribe', publicSchemas.newsletterTokenSchema],
+  ['post /api/v1/jobs/{jobId}/applications', jobs.createApplicationSchema],
+  ['post /api/v1/public/jobs/{jobId}/applications', jobs.createApplicationSchema],
+
+  ['patch /api/v1/talents/me/account/preferences', talents.updateAccountPreferencesSchema],
+  ['patch /api/v1/talents/me/profile', talents.updateProfileSchema],
+  ['patch /api/v1/talents/me/availability', talents.updateAvailabilitySchema],
+  ['patch /api/v1/talents/me/visibility', talents.updateVisibilitySchema],
+  ['post /api/v1/talents/me/onboarding/complete', null],
+  ['put /api/v1/talents/me/files', talents.linkProfileFileSchema],
+  ['post /api/v1/talents/me/experience', talents.createExperienceSchema],
+  ['patch /api/v1/talents/me/experience/{itemId}', talents.updateExperienceSchema],
+  ['delete /api/v1/talents/me/experience/{itemId}', null],
+  ['post /api/v1/talents/me/education', talents.createEducationSchema],
+  ['patch /api/v1/talents/me/education/{itemId}', talents.updateEducationSchema],
+  ['delete /api/v1/talents/me/education/{itemId}', null],
+  ['post /api/v1/talents/me/certifications', talents.createCertificationSchema],
+  ['patch /api/v1/talents/me/certifications/{itemId}', talents.updateCertificationSchema],
+  ['delete /api/v1/talents/me/certifications/{itemId}', null],
+  ['post /api/v1/talents/me/portfolio', talents.createPortfolioSchema],
+  ['patch /api/v1/talents/me/portfolio/{itemId}', talents.updatePortfolioSchema],
+  ['delete /api/v1/talents/me/portfolio/{itemId}', null],
+  ['post /api/v1/talents/me/skills', talents.createTalentSkillSchema],
+  ['patch /api/v1/talents/me/skills/{itemId}', talents.updateTalentSkillSchema],
+  ['delete /api/v1/talents/me/skills/{itemId}', null],
+  ['post /api/v1/talents/me/applications/{applicationId}/withdraw', jobs.withdrawApplicationSchema],
+  ['post /api/v1/talents/me/offers/{offerId}/respond', pipeline.offerResponseSchema],
+  ['post /api/v1/talents/me/tasks/{taskId}/status', work.taskStatusSchema],
+  ['post /api/v1/talents/me/tasks/{taskId}/comments', work.commentSchema],
+  ['post /api/v1/talents/me/tasks/{taskId}/attachments', work.taskAttachmentSchema],
+  ['post /api/v1/talents/me/time-entries', work.createTimeSchema],
+  ['patch /api/v1/talents/me/time-entries/{timeEntryId}', work.updateTimeSchema],
+  ['post /api/v1/talents/me/time-entries/{timeEntryId}/submit', work.revisionCommandSchema],
+  ['post /api/v1/talents/me/calendar/{eventId}/respond', work.calendarResponseSchema],
+  ['post /api/v1/talents/me/performance-reviews/{reviewId}/self-assessment', performance.selfAssessmentSchema],
+  ['post /api/v1/talents/me/performance-reviews/{reviewId}/respond', performance.acknowledgementSchema],
+  ['post /api/v1/talents/me/vetting', vetting.submitVettingSchema],
+  ['post /api/v1/talents/me/vetting/{caseId}/withdraw', vetting.withdrawVettingSchema],
+
+  ['patch /api/v1/organisations/{organisationId}', organisations.organisationUpdateSchema],
+  ['patch /api/v1/organisations/{organisationId}/onboarding', organisations.onboardingUpdateSchema],
+  ['post /api/v1/organisations/{organisationId}/onboarding/complete', null],
+  ['post /api/v1/organisations/{organisationId}/addresses', organisations.createAddressSchema],
+  ['patch /api/v1/organisations/{organisationId}/addresses/{addressId}', organisations.updateAddressSchema],
+  ['delete /api/v1/organisations/{organisationId}/addresses/{addressId}', null],
+  ['patch /api/v1/organisations/{organisationId}/settings', organisations.settingsUpdateSchema],
+  ['patch /api/v1/organisations/{organisationId}/members/{membershipId}/role', organisations.changeMemberRoleSchema],
+  ['post /api/v1/organisations/{organisationId}/members/{membershipId}/suspend', organisations.memberReasonSchema],
+  ['post /api/v1/organisations/{organisationId}/members/{membershipId}/reactivate', organisations.reactivateMemberSchema],
+  ['delete /api/v1/organisations/{organisationId}/members/{membershipId}', organisations.memberReasonSchema],
+  ['post /api/v1/organisations/{organisationId}/invitations', organisations.createInvitationSchema],
+  ['post /api/v1/organisations/{organisationId}/invitations/{invitationId}/revoke', organisations.revokeInvitationSchema],
+  ['post /api/v1/organisations/{organisationId}/invitations/{invitationId}/resend', organisations.resendInvitationSchema],
+  ['post /api/v1/organisations/invitations/{token}/accept', null],
+
+  ['post /api/v1/organisations/{organisationId}/jobs', jobs.createJobSchema],
+  ['patch /api/v1/organisations/{organisationId}/jobs/{jobId}', jobs.updateJobSchema],
+  ...['publish', 'pause', 'close', 'fill', 'archive'].map((action) => [`post /api/v1/organisations/{organisationId}/jobs/{jobId}/${action}`, jobs.jobCommandSchema] as [string, ZodTypeAny]),
+  ['post /api/v1/organisations/{organisationId}/applications/{applicationId}/status', jobs.updateApplicationStatusSchema],
+  ['post /api/v1/organisations/{organisationId}/interviews', pipeline.createInterviewSchema],
+  ['patch /api/v1/organisations/{organisationId}/interviews/{interviewId}', pipeline.updateInterviewSchema],
+  ['post /api/v1/organisations/{organisationId}/interviews/{interviewId}/cancel', pipeline.cancelInterviewSchema],
+  ['post /api/v1/organisations/{organisationId}/interviews/{interviewId}/outcome', pipeline.interviewOutcomeSchema],
+  ['post /api/v1/organisations/{organisationId}/offers', pipeline.createOfferSchema],
+  ['patch /api/v1/organisations/{organisationId}/offers/{offerId}', pipeline.updateOfferSchema],
+  ['post /api/v1/organisations/{organisationId}/offers/{offerId}/send', pipeline.offerCommandSchema],
+  ['post /api/v1/organisations/{organisationId}/offers/{offerId}/withdraw', pipeline.offerCommandSchema],
+
+  ['patch /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}', workforce.updateStaffSchema],
+  ['post /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}/manager', workforce.assignManagerSchema],
+  ['post /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}/department', workforce.assignDepartmentSchema],
+  ['post /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}/teams', workforce.assignTeamsSchema],
+  ['post /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}/offboard', workforce.offboardSchema],
+  ['post /api/v1/organisations/{organisationId}/departments', workforce.createDepartmentSchema],
+  ['patch /api/v1/organisations/{organisationId}/departments/{departmentId}', workforce.updateDepartmentSchema],
+  ['delete /api/v1/organisations/{organisationId}/departments/{departmentId}', null],
+  ['post /api/v1/organisations/{organisationId}/teams', workforce.createTeamSchema],
+  ['patch /api/v1/organisations/{organisationId}/teams/{teamId}', workforce.updateTeamSchema],
+  ['delete /api/v1/organisations/{organisationId}/teams/{teamId}', null],
+  ['post /api/v1/organisations/{organisationId}/tasks', work.createTaskSchema],
+  ['patch /api/v1/organisations/{organisationId}/tasks/{taskId}', work.updateTaskSchema],
+  ['post /api/v1/organisations/{organisationId}/tasks/{taskId}/status', work.taskStatusSchema],
+  ['post /api/v1/organisations/{organisationId}/tasks/{taskId}/comments', work.commentSchema],
+  ['post /api/v1/organisations/{organisationId}/tasks/{taskId}/attachments', work.taskAttachmentSchema],
+  ['post /api/v1/organisations/{organisationId}/time-entries/{timeEntryId}/decision', work.timeDecisionSchema],
+  ['post /api/v1/organisations/{organisationId}/calendar', work.createCalendarEventSchema],
+  ['patch /api/v1/organisations/{organisationId}/calendar/{eventId}', work.updateCalendarEventSchema],
+  ['post /api/v1/organisations/{organisationId}/calendar/{eventId}/cancel', work.revisionCommandSchema],
+
+  ['post /api/v1/organisations/{organisationId}/performance/periods', performance.createPeriodSchema],
+  ['patch /api/v1/organisations/{organisationId}/performance/periods/{periodId}', performance.updatePeriodSchema],
+  ['post /api/v1/organisations/{organisationId}/performance/periods/{periodId}/status', performance.periodTransitionSchema],
+  ['post /api/v1/organisations/{organisationId}/performance/periods/{periodId}/metrics', performance.createMetricSchema],
+  ['patch /api/v1/organisations/{organisationId}/performance/periods/{periodId}/metrics/{metricId}', performance.updateMetricSchema],
+  ['post /api/v1/organisations/{organisationId}/performance/reviews', performance.createReviewSchema],
+  ['patch /api/v1/organisations/{organisationId}/performance/reviews/{reviewId}', performance.updateReviewSchema],
+  ['post /api/v1/organisations/{organisationId}/performance/reviews/{reviewId}/feedback', performance.feedbackSchema],
+  ['put /api/v1/organisations/{organisationId}/performance/reviews/{reviewId}/results', performance.metricResultSchema],
+  ['post /api/v1/organisations/{organisationId}/performance/reviews/{reviewId}/status', performance.reviewTransitionSchema],
+
+  ['post /api/v1/organisations/{organisationId}/jobs/{jobId}/matches/recompute', matching.recomputeSchema],
+  ['post /api/v1/organisations/{organisationId}/shortlists', matching.createShortlistSchema],
+  ['patch /api/v1/organisations/{organisationId}/shortlists/{shortlistId}', matching.updateShortlistSchema],
+  ['post /api/v1/organisations/{organisationId}/shortlists/{shortlistId}/archive', matching.archiveShortlistSchema],
+  ['post /api/v1/organisations/{organisationId}/shortlists/{shortlistId}/candidates', matching.addCandidateSchema],
+  ['delete /api/v1/organisations/{organisationId}/shortlists/{shortlistId}/candidates/{candidateId}', null],
+  ['post /api/v1/organisations/{organisationId}/shortlists/{shortlistId}/notes', matching.addNoteSchema],
+
+  ['patch /api/v1/organisations/{organisationId}/placements/{placementId}', placements.updatePlacementSchema],
+  ['post /api/v1/organisations/{organisationId}/placements/{placementId}/status', placements.placementStatusSchema],
+  ['post /api/v1/organisations/{organisationId}/replacements', placements.requestReplacementSchema],
+  ['post /api/v1/organisations/{organisationId}/replacements/{replacementId}/cancel', placements.cancelReplacementSchema],
+  ['post /api/v1/organisations/{organisationId}/replacements/{replacementId}/candidates/{candidateId}/respond', placements.candidateResponseSchema],
+
+  ['post /api/v1/organisations/{organisationId}/compensation/agreements', compensation.createAgreementSchema],
+  ['patch /api/v1/organisations/{organisationId}/compensation/agreements/{agreementId}', compensation.updateAgreementSchema],
+  ['post /api/v1/organisations/{organisationId}/compensation/agreements/{agreementId}/status', compensation.agreementStatusSchema],
+  ['post /api/v1/organisations/{organisationId}/compensation/adjustments', compensation.createAdjustmentSchema],
+  ['post /api/v1/organisations/{organisationId}/payroll', compensation.createPayrollSchema],
+  ...['calculate', 'submit', 'approve', 'lock', 'reopen', 'void'].map((action) => [`post /api/v1/organisations/{organisationId}/payroll/{payrollPeriodId}/${action}`, compensation.payrollCommandSchema] as [string, ZodTypeAny]),
+  ['post /api/v1/organisations/{organisationId}/payments', compensation.createPaymentSchema],
+  ['post /api/v1/organisations/{organisationId}/payments/{paymentId}/status', compensation.paymentStatusSchema],
+
+  ['post /api/v1/organisations/{organisationId}/exports', exportSchemas.createExportSchema],
+  ['post /api/v1/files/uploads', files.initiateUploadSchema],
+  ['post /api/v1/files/{fileId}/complete', files.completeUploadSchema],
+  ['post /api/v1/files/{fileId}/download', null],
+  ['delete /api/v1/files/{fileId}', null],
+  ['post /api/v1/notifications/read-all', null],
+  ['put /api/v1/notifications/preferences', notifications.preferenceSchema],
+  ['post /api/v1/notifications/{notificationId}/read', null],
+  ['delete /api/v1/notifications/{notificationId}', null],
+  ['post /api/v1/conversations', messaging.createConversationSchema],
+  ['post /api/v1/conversations/{conversationId}/archive', messaging.archiveConversationSchema],
+  ['post /api/v1/conversations/{conversationId}/leave', null],
+  ['post /api/v1/conversations/{conversationId}/messages', messaging.sendMessageSchema],
+  ['patch /api/v1/conversations/{conversationId}/messages/{messageId}', messaging.editMessageSchema],
+  ['delete /api/v1/conversations/{conversationId}/messages/{messageId}', messaging.messageRevisionSchema],
+  ['post /api/v1/conversations/{conversationId}/read', null],
+  ['post /api/v1/support/cases', support.createCaseSchema],
+  ['post /api/v1/support/cases/{caseId}/notes', support.noteSchema],
+  ['post /api/v1/support/cases/{caseId}/reopen', support.customerReopenSchema],
+
+  ['post /api/v1/admin/users/{id}/status', admin.userStatusCommand],
+  ['post /api/v1/admin/organisations/{id}/status', admin.organisationStatusCommand],
+  ['post /api/v1/admin/organisations/{id}/verification', admin.organisationVerificationCommand],
+  ['post /api/v1/admin/jobs/{id}/moderation', admin.moderationCommand],
+  ['post /api/v1/admin/roles/grant', admin.roleCommand],
+  ['post /api/v1/admin/roles/revoke', admin.roleCommand],
+  ['patch /api/v1/admin/leads/{kind}/{id}', admin.leadStatusCommand],
+  ['put /api/v1/admin/configuration/feature-flags', admin.featureFlagSchema],
+  ['put /api/v1/admin/configuration/policies', admin.policySchema],
+  ['post /api/v1/admin/announcements', admin.announcementSchema],
+  ['post /api/v1/admin/operations/jobs/{id}/retry', admin.userStatusCommand.pick({ reason: true })],
+  ['post /api/v1/admin/vetting/{caseId}/assign', vetting.assignVettingSchema],
+  ['post /api/v1/admin/vetting/{caseId}/assessments', vetting.assessmentSchema],
+  ['post /api/v1/admin/vetting/{caseId}/review', vetting.reviewVettingSchema],
+  ['post /api/v1/admin/replacements/{replacementId}/decision', placements.replacementDecisionSchema],
+  ['post /api/v1/admin/replacements/{replacementId}/candidates', placements.proposeCandidatesSchema],
+  ['post /api/v1/admin/exports', exportSchemas.createExportSchema],
+  ['patch /api/v1/admin/support/{caseId}', support.adminUpdateSchema],
+  ['post /api/v1/admin/support/{caseId}/notes', support.noteSchema],
+]);
+
+const requestQueries = new Map<string, ZodTypeAny>([
+  ['get /api/v1/jobs', jobs.publicJobQuerySchema],
+  ['get /api/v1/public/jobs', jobs.publicJobQuerySchema],
+  ['get /api/v1/talents/skills', talents.skillSearchQuerySchema],
+  ['get /api/v1/public/talents/skills', talents.skillSearchQuerySchema],
+  ['get /api/v1/talents', talents.discoveryQuerySchema],
+  ['get /api/v1/public/talents', talents.discoveryQuerySchema],
+  ['get /api/v1/talents/me/applications', jobs.myApplicationsQuerySchema],
+  ['get /api/v1/talents/me/interviews', pipeline.interviewListQuerySchema.pick({ page: true, pageSize: true })],
+  ['get /api/v1/talents/me/offers', pipeline.offerListQuerySchema],
+  ['get /api/v1/talents/me/tasks', work.taskListQuerySchema],
+  ['get /api/v1/talents/me/time-entries', work.timeListQuerySchema],
+  ['get /api/v1/talents/me/calendar', work.calendarListQuerySchema],
+  ['get /api/v1/talents/me/performance-reviews', performance.reviewListQuerySchema],
+  ['get /api/v1/talents/me/placements', placements.placementListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/members', organisations.memberListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/invitations', organisations.invitationListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/jobs', jobs.organisationJobQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/applications', jobs.applicationListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/interviews', pipeline.interviewListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/offers', pipeline.offerListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/team-members', workforce.staffListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/tasks', work.taskListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/time-entries', work.timeListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/calendar', work.calendarListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/performance/periods', performance.performanceListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/performance/reviews', performance.reviewListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/jobs/{jobId}/matches', matching.matchQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/shortlists', matching.shortlistListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/placements', placements.placementListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/replacements', placements.replacementListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/compensation/agreements', compensation.compensationListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/payroll', compensation.payrollListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/payments', compensation.paymentListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/exports', exportSchemas.exportListQuerySchema],
+  ['get /api/v1/organisations/{organisationId}/dashboard', reporting.dashboardQuerySchema],
+  ['get /api/v1/notifications', notifications.notificationQuerySchema],
+  ['get /api/v1/conversations', messaging.conversationListQuerySchema],
+  ['get /api/v1/conversations/{conversationId}/messages', messaging.messageListQuerySchema],
+  ['get /api/v1/support/cases', support.listSchema],
+  ['get /api/v1/search', search.globalSearchSchema],
+  ['get /api/v1/admin/users', admin.userListQuery],
+  ['get /api/v1/admin/organisations', admin.organisationListQuery],
+  ['get /api/v1/admin/applications', admin.applicationReviewQuery],
+  ['get /api/v1/admin/placements', admin.placementReviewQuery],
+  ['get /api/v1/admin/compensation/payroll', admin.payrollReviewQuery],
+  ['get /api/v1/admin/compensation/payments', admin.paymentReviewQuery],
+  ['get /api/v1/admin/leads/{kind}', admin.leadListQuery],
+  ['get /api/v1/admin/audit', admin.auditQuery],
+  ['get /api/v1/admin/operations', admin.operationsQuery],
+  ['get /api/v1/admin/vetting', vetting.vettingListQuerySchema],
+  ['get /api/v1/admin/replacements', placements.replacementListQuerySchema],
+  ['get /api/v1/admin/exports', exportSchemas.exportListQuerySchema],
+  ['get /api/v1/admin/support', support.listSchema],
+]);
+
+const idempotentOperations = new Set([
+  'post /api/v1/jobs/{jobId}/applications',
+  'post /api/v1/public/jobs/{jobId}/applications',
+  'post /api/v1/talents/me/offers/{offerId}/respond',
+  'post /api/v1/organisations/{organisationId}/jobs',
+  'post /api/v1/organisations/{organisationId}/replacements',
+  'post /api/v1/organisations/{organisationId}/compensation/agreements',
+  'post /api/v1/organisations/{organisationId}/payments',
+  'post /api/v1/organisations/{organisationId}/exports',
+  'post /api/v1/conversations',
+  'post /api/v1/conversations/{conversationId}/messages',
+  'post /api/v1/admin/replacements/{replacementId}/decision',
+  'post /api/v1/admin/exports',
+]);
+
+const entitySchema = z.object({ id: z.string().uuid() }).passthrough();
+const jobSchema = entitySchema.extend({
+  title: z.string(),
+  status: z.string().optional(),
+  updatedAt: z.string().datetime(),
+});
+const applicationSchema = entitySchema.extend({
+  jobId: z.string().uuid(),
+  talentProfileId: z.string().uuid(),
+  status: z.string(),
+  updatedAt: z.string().datetime(),
+});
+const offerSchema = entitySchema.extend({
+  applicationId: z.string().uuid(),
+  talentProfileId: z.string().uuid(),
+  status: z.string(),
+  updatedAt: z.string().datetime(),
+});
+const placementSchema = entitySchema.extend({ talentProfileId: z.string().uuid(), status: z.string() });
+const staffAssignmentSchema = entitySchema.extend({ talentProfileId: z.string().uuid(), status: z.string() });
+
+const responseSchemas = new Map<string, ZodTypeAny>([
+  ['get /api/v1/jobs', z.object({ jobs: z.array(jobSchema) })],
+  ['get /api/v1/jobs/{jobId}', z.object({ job: jobSchema })],
+  ['get /api/v1/public/jobs', z.object({ jobs: z.array(jobSchema) })],
+  ['get /api/v1/public/jobs/{jobId}', z.object({ job: jobSchema })],
+  ['post /api/v1/jobs/{jobId}/applications', z.object({ application: applicationSchema })],
+  ['post /api/v1/public/jobs/{jobId}/applications', z.object({ application: applicationSchema })],
+  ['get /api/v1/talents/me/applications', z.object({ applications: z.array(applicationSchema) })],
+  ['post /api/v1/talents/me/applications/{applicationId}/withdraw', z.object({ application: applicationSchema })],
+  ['get /api/v1/talents/me/offers', z.object({ offers: z.array(offerSchema) })],
+  ['post /api/v1/talents/me/offers/{offerId}/respond', z.object({ offer: offerSchema, placement: placementSchema.nullable(), staffAssignment: staffAssignmentSchema.nullable() })],
+  ['get /api/v1/talents/me/placements', z.object({ placements: z.array(placementSchema) })],
+  ['get /api/v1/talents/me/placements/{placementId}', z.object({ placement: placementSchema })],
+  ['get /api/v1/organisations/{organisationId}/jobs', z.object({ jobs: z.array(jobSchema) })],
+  ['post /api/v1/organisations/{organisationId}/jobs', z.object({ job: jobSchema })],
+  ['get /api/v1/organisations/{organisationId}/jobs/{jobId}', z.object({ job: jobSchema })],
+  ['patch /api/v1/organisations/{organisationId}/jobs/{jobId}', z.object({ job: jobSchema })],
+  ...['publish', 'pause', 'close', 'fill', 'archive'].map((action) => [`post /api/v1/organisations/{organisationId}/jobs/{jobId}/${action}`, z.object({ job: jobSchema })] as [string, ZodTypeAny]),
+  ['get /api/v1/organisations/{organisationId}/applications', z.object({ applications: z.array(applicationSchema) })],
+  ['get /api/v1/organisations/{organisationId}/applications/{applicationId}', z.object({ application: applicationSchema })],
+  ['post /api/v1/organisations/{organisationId}/applications/{applicationId}/status', z.object({ application: applicationSchema })],
+  ['get /api/v1/organisations/{organisationId}/offers', z.object({ offers: z.array(offerSchema) })],
+  ['post /api/v1/organisations/{organisationId}/offers', z.object({ offer: offerSchema })],
+  ['patch /api/v1/organisations/{organisationId}/offers/{offerId}', z.object({ offer: offerSchema })],
+  ['post /api/v1/organisations/{organisationId}/offers/{offerId}/send', z.object({ offer: offerSchema })],
+  ['post /api/v1/organisations/{organisationId}/offers/{offerId}/withdraw', z.object({ offer: offerSchema })],
+  ['get /api/v1/organisations/{organisationId}/placements', z.object({ placements: z.array(placementSchema) })],
+  ['get /api/v1/organisations/{organisationId}/placements/{placementId}', z.object({ placement: placementSchema })],
+  ['get /api/v1/organisations/{organisationId}/team-members', z.object({ teamMembers: z.array(staffAssignmentSchema) })],
+  ['get /api/v1/organisations/{organisationId}/team-members/{staffAssignmentId}', z.object({ teamMember: staffAssignmentSchema })],
+]);
+
+function join(prefix: string, suffix: string): string {
+  return suffix === '/' ? prefix : `${prefix}${suffix}`;
+}
+function operationId(method: string, path: string): string {
+  const words = `${method} ${path}`.replace(/[{}]/g, '').split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  return `catalog${words.map((word) => word[0]!.toUpperCase() + word.slice(1)).join('')}`;
+}
+
+function operationRequest(method: HttpMethod, path: string): OperationDoc['request'] | undefined {
+  const key = `${method} ${path}`;
+  const query = requestQueries.get(key);
+  const hasBodyDefinition = requestBodies.has(key);
+  const body = requestBodies.get(key);
+  if (!['get'].includes(method) && !hasBodyDefinition) {
+    throw new Error(`Missing OpenAPI request-body decision for ${key}.`);
+  }
+  const headers = idempotentOperations.has(key) ? idempotencyHeaders : undefined;
+  if (!query && !body && !headers) return undefined;
+  return {
+    ...(query ? { query } : {}),
+    ...(body ? { body } : {}),
+    ...(headers ? { headers } : {}),
+  };
+}
+
+export const catalogOperations: OperationDoc[] = groups.flatMap((group) => group.routes.map((route) => {
+  const [rawMethod, suffix] = route.split(' ') as [string, string];
+  const method = rawMethod.toLowerCase() as HttpMethod;
+  const path = join(group.prefix, suffix);
+  const key = `${method} ${path}`;
+  const request = operationRequest(method, path);
+  const responseSchema = responseSchemas.get(key) ?? genericData;
+  return {
+    method, path, operationId: operationId(method, path), summary: `${rawMethod} ${path}`,
+    description: 'Uses the standard Oreno success/error envelopes. Request schemas come from the same Zod validators used by controllers. UUID path parameters identify write resources; tenant routes enforce organisation membership and permissions.',
+    tags: [group.tag], ...(group.public ? { security: [] } : {}),
+    ...(request ? { request } : {}),
+    responses: [
+      { status: 200, description: 'Request completed.', schema: responseSchema, envelope: true },
+      ...(method === 'post' ? [{ status: 201, description: 'Resource created.', schema: responseSchema, envelope: true } as const] : []),
+      { status: 400, description: 'Validation failed.', ref: '#/components/responses/BadRequest' },
+      ...(!group.public ? [{ status: 401, description: 'Authentication required.', ref: '#/components/responses/Unauthorised' } as const] : []),
+      { status: 404, description: 'Resource not found or not visible.', ref: '#/components/responses/NotFound' },
+      { status: 409, description: 'State or revision conflict.', ref: '#/components/responses/Conflict' },
+      { status: 422, description: 'Business rule prevented the operation.', ref: '#/components/responses/Unprocessable' },
+    ],
+  } satisfies OperationDoc;
+}));

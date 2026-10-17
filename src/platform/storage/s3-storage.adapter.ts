@@ -1,0 +1,257 @@
+import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getSignedUrl as getCloudFrontUrl } from '@aws-sdk/cloudfront-signer';
+import { loadConfig } from '../../config/index.js';
+import { StorageError, type BucketKind, type ObjectMetadata } from './storage.types.js';
+
+/**
+ * S3 storage driver.
+ *
+ * Every bucket stays private. Uploads use a pre-signed PUT that pins the
+ * content type and a content-length range, so a client cannot use the signature
+ * to store a different object type or an unbounded payload. Downloads use a
+ * pre-signed GET unless the object is in the public bucket and CloudFront is
+ * configured, in which case a signed CloudFront URL is issued instead — S3 is
+ * never exposed directly.
+ */
+const UPLOAD_CONTENT_LENGTH_SLACK = 1024;
+
+export class S3StorageAdapter {
+  readonly name = 's3';
+  readonly supportsPublicDelivery: boolean;
+  private readonly client: S3Client;
+
+  constructor() {
+    const config = loadConfig();
+    this.supportsPublicDelivery = config.cloudfront.enabled;
+    this.client = new S3Client({
+      region: config.storage.region,
+      ...(config.storage.accessKeyId && config.storage.secretAccessKey
+        ? {
+            credentials: {
+              accessKeyId: config.storage.accessKeyId,
+              secretAccessKey: config.storage.secretAccessKey,
+            },
+          }
+        : {}),
+      ...(config.storage.endpoint ? { endpoint: config.storage.endpoint } : {}),
+      forcePathStyle: config.storage.forcePathStyle,
+    });
+  }
+
+  private bucketName(kind: BucketKind): string {
+    const { buckets } = loadConfig().storage;
+    return buckets[kind];
+  }
+
+  async createUploadUrl(input: {
+    bucket: BucketKind;
+    key: string;
+    contentType: string;
+    contentLength: number;
+    expiresInSeconds: number;
+  }): Promise<{
+    uploadUrl: string;
+    method: 'PUT';
+    headers: Record<string, string>;
+    storageKey: string;
+    expiresAt: Date;
+  }> {
+    try {
+      const command = new PutObjectCommand({
+        Bucket: this.bucketName(input.bucket),
+        Key: input.key,
+        ContentType: input.contentType,
+        ContentLength: input.contentLength,
+      });
+
+      const uploadUrl = await getSignedUrl(this.client, command, {
+        expiresIn: input.expiresInSeconds,
+        // Bind both the declared type and length into the signature.
+        signableHeaders: new Set(['content-type', 'content-length']),
+        unhoistableHeaders: new Set(['content-length']),
+      });
+
+      return {
+        uploadUrl,
+        method: 'PUT',
+        headers: {
+          'Content-Type': input.contentType,
+          'Content-Length': String(input.contentLength),
+        },
+        storageKey: input.key,
+        expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
+      };
+    } catch (error) {
+      throw new StorageError('Could not create an upload URL', 'createUploadUrl', error);
+    }
+  }
+
+  async createDownloadUrl(input: {
+    bucket: BucketKind;
+    key: string;
+    expiresInSeconds: number;
+    downloadFilename?: string;
+    contentType?: string;
+  }): Promise<string> {
+    const config = loadConfig();
+
+    if (input.bucket === 'public' && config.cloudfront.enabled) {
+      return this.cloudFrontUrl(input.key, input.expiresInSeconds);
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucketName(input.bucket),
+        Key: input.key,
+        ...(input.downloadFilename
+          ? { ResponseContentDisposition: buildDisposition(input.downloadFilename) }
+          : {}),
+        ...(input.contentType ? { ResponseContentType: input.contentType } : {}),
+      });
+      return await getSignedUrl(this.client, command, { expiresIn: input.expiresInSeconds });
+    } catch (error) {
+      throw new StorageError('Could not create a download URL', 'createDownloadUrl', error);
+    }
+  }
+
+  /** A signed CloudFront URL. Falls back to a pre-signed S3 GET if unconfigured. */
+  private cloudFrontUrl(key: string, expiresInSeconds: number): Promise<string> {
+    const config = loadConfig();
+    const { domain, keyPairId, privateKey } = config.cloudfront;
+    if (!domain || !keyPairId || !privateKey) {
+      throw new StorageError('CloudFront is not fully configured', 'cloudFrontUrl');
+    }
+
+    const expires = new Date(Date.now() + expiresInSeconds * 1000);
+    return Promise.resolve(
+      getCloudFrontUrl({
+        url: `https://${domain}/${key.replace(/^\/+/, '')}`,
+        keyPairId,
+        privateKey,
+        dateLessThan: expires.toISOString(),
+      }),
+    );
+  }
+
+  async headObject(location: {
+    bucket: BucketKind;
+    key: string;
+  }): Promise<ObjectMetadata | undefined> {
+    try {
+      const result = await this.client.send(
+        new HeadObjectCommand({
+          Bucket: this.bucketName(location.bucket),
+          Key: location.key,
+        }),
+      );
+      return {
+        size: result.ContentLength ?? 0,
+        ...(result.ContentType ? { contentType: result.ContentType } : {}),
+        ...(result.ETag ? { etag: result.ETag } : {}),
+      };
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
+      throw new StorageError('Could not read object metadata', 'headObject', error);
+    }
+  }
+
+  async putObject(
+    location: { bucket: BucketKind; key: string },
+    body: Buffer | string,
+    contentType?: string,
+  ): Promise<void> {
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName(location.bucket),
+          Key: location.key,
+          Body: body,
+          ...(contentType ? { ContentType: contentType } : {}),
+        }),
+      );
+    } catch (error) {
+      throw new StorageError('Could not write object', 'putObject', error);
+    }
+  }
+
+  async getObject(location: { bucket: BucketKind; key: string }): Promise<Buffer> {
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({
+          Bucket: this.bucketName(location.bucket),
+          Key: location.key,
+        }),
+      );
+      if (!result.Body) throw new StorageError('Object has no body', 'getObject');
+      return Buffer.from(await result.Body.transformToByteArray());
+    } catch (error) {
+      if (error instanceof StorageError) throw error;
+      throw new StorageError('Could not read object', 'getObject', error);
+    }
+  }
+
+  async deleteObject(location: { bucket: BucketKind; key: string }): Promise<void> {
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucketName(location.bucket),
+          Key: location.key,
+        }),
+      );
+    } catch (error) {
+      throw new StorageError('Could not delete object', 'deleteObject', error);
+    }
+  }
+
+  async copyObject(
+    from: { bucket: BucketKind; key: string },
+    to: { bucket: BucketKind; key: string },
+  ): Promise<void> {
+    try {
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucketName(to.bucket),
+          Key: to.key,
+          CopySource: `${this.bucketName(from.bucket)}/${encodeURIComponent(from.key)}`,
+        }),
+      );
+    } catch (error) {
+      throw new StorageError('Could not copy object', 'copyObject', error);
+    }
+  }
+
+  async publicUrl(key: string, expiresInSeconds: number): Promise<string> {
+    const config = loadConfig();
+    if (config.cloudfront.enabled) {
+      return this.cloudFrontUrl(key, expiresInSeconds);
+    }
+    // Without CloudFront, a public object is still served through a signed URL
+    // rather than being made anonymously readable.
+    return this.createDownloadUrl({ bucket: 'public', key, expiresInSeconds });
+  }
+}
+
+function buildDisposition(filename: string): string {
+  const safe = filename.replace(/["\\\r\n]/g, '');
+  return `attachment; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}
+
+function isNotFound(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return (
+    candidate.name === 'NotFound' ||
+    candidate.name === 'NoSuchKey' ||
+    candidate.$metadata?.httpStatusCode === 404
+  );
+}
+
+export { UPLOAD_CONTENT_LENGTH_SLACK };

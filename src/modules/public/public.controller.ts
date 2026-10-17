@@ -1,0 +1,8 @@
+import type { Request, Response } from 'express'; import { sendSuccess } from '../../common/http/response.js'; import { validate } from '../../common/validation/validate.js'; import { contactRequestSchema, demoRequestSchema, newsletterSubscribeSchema, newsletterTokenSchema } from './public.schema.js'; import * as service from './public.service.js';
+const meta = (req: Request) => ({ ipAddress: req.ip, userAgent: req.get('user-agent') ?? undefined });
+export async function demo(req: Request, res: Response): Promise<void> { const { body } = validate(req, { body: demoRequestSchema }); const result = await service.submitDemo(body, meta(req)); sendSuccess(res, { request: result }, { status: 202 }); }
+export async function contact(req: Request, res: Response): Promise<void> { const { body } = validate(req, { body: contactRequestSchema }); const result = await service.submitContact(body, meta(req)); sendSuccess(res, { request: result }, { status: 202 }); }
+export async function subscribe(req: Request, res: Response): Promise<void> { const { body } = validate(req, { body: newsletterSubscribeSchema }); await service.subscribeNewsletter(body, meta(req)); sendSuccess(res, { accepted: true }, { status: 202 }); }
+export async function confirm(req: Request, res: Response): Promise<void> { const { body } = validate(req, { body: newsletterTokenSchema }); await service.confirmNewsletter(body.token); sendSuccess(res, { confirmed: true }); }
+export async function unsubscribe(req: Request, res: Response): Promise<void> { const { body } = validate(req, { body: newsletterTokenSchema }); await service.unsubscribeNewsletter(body.token, meta(req)); sendSuccess(res, { unsubscribed: true }); }
+

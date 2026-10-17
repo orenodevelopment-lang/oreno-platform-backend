@@ -1,0 +1,2 @@
+import type{Request,Response}from'express';import{sendSuccess}from'../../common/http/response.js';import{validate}from'../../common/validation/validate.js';import{requireAuthContext}from'../auth/index.js';import{globalSearchSchema}from'./search.schema.js';import*as service from'./search.service.js';export async function search(req:Request,res:Response){const{query}=validate(req,{query:globalSearchSchema});sendSuccess(res,{results:await service.search(requireAuthContext(req),query)},{meta:{page:query.page,pageSize:query.pageSize}});}
+
