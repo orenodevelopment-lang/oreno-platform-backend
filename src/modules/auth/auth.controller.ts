@@ -151,6 +151,8 @@ export async function currentUser(req: Request, res: Response): Promise<void> {
       isPlatformAdmin: auth.isPlatformAdmin,
       platformRoles: auth.platformRoles,
       permissions: [...auth.platformPermissions, ...auth.organisationPermissions].sort(),
+      mfaSatisfied: auth.session?.mfaSatisfied ?? true,
+      sessionExpiresAt: auth.session?.expiresAt.toISOString() ?? null,
       impersonation: auth.impersonation
         ? {
             adminUserId: auth.impersonation.adminUserId,

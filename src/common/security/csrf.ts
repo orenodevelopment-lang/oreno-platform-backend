@@ -28,6 +28,7 @@ export function setCsrfCookie(res: Response, token: string): void {
     httpOnly: false, // Must be readable by the frontend to echo it back.
     secure: config.isProduction,
     sameSite: config.isProduction ? 'none' : 'lax',
+    domain: config.session.cookieDomain,
     path: '/',
     maxAge: config.session.ttlHours * 60 * 60 * 1000,
   });
@@ -35,7 +36,10 @@ export function setCsrfCookie(res: Response, token: string): void {
 
 export function clearCsrfCookie(res: Response): void {
   const config = loadConfig();
-  res.clearCookie(config.session.csrfCookieName, { path: '/' });
+  res.clearCookie(config.session.csrfCookieName, {
+    path: '/',
+    domain: config.session.cookieDomain,
+  });
 }
 
 export function csrfProtectionMiddleware() {

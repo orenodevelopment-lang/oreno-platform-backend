@@ -4,7 +4,7 @@ TypeScript/Express backend for Oreno's multi-tenant hiring, talent, workforce, m
 
 ## Local setup
 
-Prerequisites: Node.js 20.11 or later, npm, Docker Desktop, PostgreSQL 16, and Redis 7. The repository currently resolves Prisma 6.19 through the lockfile.
+Prerequisites: Node.js 22.12 or later, npm, Docker Desktop, PostgreSQL 16, and Redis 7. The repository currently resolves Prisma 6.19 through the lockfile.
 
 ```powershell
 Copy-Item .env.example .env
@@ -59,6 +59,7 @@ npm run test:all
 npm run build
 npm run openapi:check
 npm audit --omit=dev
+npm run verify:providers
 ```
 
 Integration and HTTP suites require isolated PostgreSQL and Redis services. Unit tests do not require external services.
@@ -72,7 +73,7 @@ npm run openapi:generate
 npm run openapi:check
 ```
 
-All 298 mounted operations are inventoried. Mutation bodies and the principal query filters use the same Zod schemas as their controllers, idempotent commands document `Idempotency-Key`, and the core hiring journey has structured response models. Some non-core response payloads still use a generic object envelope, so review those generated types as each frontend module is integrated.
+All 303 mounted operations are inventoried. Mutation bodies and query filters use the same Zod schemas as their controllers, idempotent commands document `Idempotency-Key`, and response envelopes identify their concrete top-level resources. Delete and leave operations document their 204 responses.
 
 Frontend TypeScript clients can be generated with any OpenAPI 3.1-compatible generator. One example is:
 
@@ -80,6 +81,10 @@ Frontend TypeScript clients can be generated with any OpenAPI 3.1-compatible gen
 npx openapi-typescript openapi/openapi.json -o src/generated/oreno-api.d.ts
 ```
 
-Keep generated frontend files in the frontend repository. This backend repository does not modify sibling client projects.
+Keep generated frontend files in the frontend repository and regenerate them whenever this contract changes.
+
+## Live provider verification
+
+`npm run verify:providers` validates provider configuration without sending traffic. Run `npm run verify:providers -- --live` only in a controlled staging or production-equivalent environment. The live mode sends a marked test email, exercises all configured S3 buckets, downloads a configured CloudFront object, scans a clean ClamAV payload, checks enabled OAuth authorization endpoints and submits an error-monitoring event. See [PROVIDER_VERIFICATION.md](PROVIDER_VERIFICATION.md).
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the manual Render release procedure and [HANDOFF.md](HANDOFF.md) for implementation decisions and verification limits.

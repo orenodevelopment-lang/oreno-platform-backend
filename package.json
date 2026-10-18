@@ -5,7 +5,7 @@
   "description": "Oreno multi-tenant hiring and workforce-management platform backend",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=22.12.0"
   },
   "main": "dist/server.js",
   "scripts": {
@@ -36,6 +36,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "openapi:check": "tsx scripts/generate-openapi.ts --check",
+    "verify:providers": "tsx scripts/verify-providers.ts",
+    "check:production": "npm run prisma:validate && npm run openapi:check && npm run typecheck && npm run lint && npm run test:all && npm run build && npm audit --omit=dev --audit-level=high",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:reset": "docker compose down -v && docker compose up -d",
@@ -50,6 +52,7 @@
     "@aws-sdk/s3-request-presigner": "^3.699.0",
     "@node-rs/argon2": "^2.0.2",
     "@prisma/client": "^6.19.3",
+    "@sentry/node": "^11.8.0",
     "@socket.io/redis-adapter": "^8.3.0",
     "bullmq": "^5.34.0",
     "compression": "^1.7.5",
@@ -79,7 +82,7 @@
     "@types/nodemailer": "^6.4.17",
     "@types/supertest": "^6.0.2",
     "@types/swagger-ui-express": "^4.1.7",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.4.2",
@@ -89,7 +92,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.19.1",
-    "vitest": "^2.1.8"
+    "vitest": "^5.0.5"
   },
   "overrides": {
     "@prisma/config": {

@@ -23,6 +23,7 @@ export function setSessionCookie(
     httpOnly: true,
     secure: config.isProduction,
     sameSite: config.isProduction ? 'none' : 'lax',
+    domain: config.session.cookieDomain,
     path: '/',
     maxAge: options.maxAgeMs ?? config.session.ttlHours * 60 * 60 * 1000,
   });
@@ -34,6 +35,7 @@ export function clearSessionCookie(res: Response): void {
     httpOnly: true,
     secure: config.isProduction,
     sameSite: config.isProduction ? 'none' : 'lax',
+    domain: config.session.cookieDomain,
     path: '/',
   });
 }

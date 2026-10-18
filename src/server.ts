@@ -5,6 +5,7 @@ import { createModuleLogger, initLogger, serialiseError } from './common/logging
 import { registerRateLimitStore } from './common/middleware/rate-limit.js';
 import { createRateLimitStore } from './common/middleware/rate-limit-redis.js';
 import { startMetricsReporter } from './common/observability/metrics.js';
+import { initialiseConfiguredErrorMonitor } from './common/observability/error-monitor.js';
 import { connectKeyValue } from './database/key-value.js';
 import { connectPrisma } from './database/prisma.js';
 import { installShutdownHandlers } from './shutdown.js';
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
     isProduction: config.isProduction,
   });
   const log = createModuleLogger('server');
+  const flushErrorMonitor = initialiseConfiguredErrorMonitor();
 
   await connectPrisma();
   log.info('database connected');
@@ -59,7 +61,7 @@ async function main(): Promise<void> {
   const shutdown = installShutdownHandlers({
     logger: log,
     server,
-    teardown: [() => messagingSocket.close(), () => stopMetrics?.()],
+    teardown: [() => messagingSocket.close(), () => stopMetrics?.(), flushErrorMonitor],
   });
 
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

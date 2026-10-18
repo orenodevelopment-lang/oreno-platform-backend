@@ -53,6 +53,7 @@ const schema = z
 
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
     SESSION_COOKIE_NAME: z.string().default('oreno_session'),
+    SESSION_COOKIE_DOMAIN: optionalString,
     SESSION_TTL_HOURS: integer(720),
     SESSION_IDLE_TIMEOUT_MINUTES: integer(10080),
     CSRF_COOKIE_NAME: z.string().default('oreno_csrf'),
@@ -129,6 +130,29 @@ const schema = z
         path: ['ALLOWED_ORIGINS'],
         message: 'At least one exact origin is required in production.',
       });
+    }
+
+    if (isProduction) {
+      const appHost = new URL(value.APP_URL).hostname;
+      const apiHost = new URL(value.API_URL).hostname;
+      if (appHost !== apiHost) {
+        const cookieDomain = value.SESSION_COOKIE_DOMAIN?.replace(/^\./, '');
+        if (!cookieDomain || !appHost.endsWith(cookieDomain) || !apiHost.endsWith(cookieDomain)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['SESSION_COOKIE_DOMAIN'],
+            message:
+              'Sibling frontend/API hosts require a shared SESSION_COOKIE_DOMAIN so cookie auth, CSRF and Socket.IO work in the browser.',
+          });
+        }
+      }
+      if (!value.ERROR_MONITORING_DSN) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['ERROR_MONITORING_DSN'],
+          message: 'Production requires an error-monitoring provider DSN.',
+        });
+      }
     }
 
     for (const origin of value.ALLOWED_ORIGINS) {
@@ -232,22 +256,36 @@ const schema = z
       });
     }
 
-    if (
-      (value.EMAIL_PROVIDER === 'ses' || value.EMAIL_PROVIDER === 'resend') &&
-      !value.EMAIL_PROVIDER_API_KEY
-    ) {
+    if (value.EMAIL_PROVIDER === 'resend' && !value.EMAIL_PROVIDER_API_KEY) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['EMAIL_PROVIDER_API_KEY'],
-        message: `EMAIL_PROVIDER_API_KEY is required when EMAIL_PROVIDER=${value.EMAIL_PROVIDER}.`,
+        message: 'EMAIL_PROVIDER_API_KEY is required when EMAIL_PROVIDER=resend.',
+      });
+    }
+    if (
+      value.EMAIL_PROVIDER === 'ses' &&
+      (!value.AWS_ACCESS_KEY_ID || !value.AWS_SECRET_ACCESS_KEY)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AWS_ACCESS_KEY_ID'],
+        message: 'AWS credentials are required when EMAIL_PROVIDER=ses.',
       });
     }
 
-    if (value.CLOUDFRONT_KEY_PAIR_ID && !value.CLOUDFRONT_PRIVATE_KEY) {
+    const cloudFrontValues = [
+      value.CLOUDFRONT_DOMAIN,
+      value.CLOUDFRONT_KEY_PAIR_ID,
+      value.CLOUDFRONT_PRIVATE_KEY,
+    ];
+    const configuredCloudFrontValues = cloudFrontValues.filter(Boolean).length;
+    if (configuredCloudFrontValues !== 0 && configuredCloudFrontValues !== 3) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['CLOUDFRONT_PRIVATE_KEY'],
-        message: 'CLOUDFRONT_PRIVATE_KEY is required when CLOUDFRONT_KEY_PAIR_ID is set.',
+        path: ['CLOUDFRONT_DOMAIN'],
+        message:
+          'CLOUDFRONT_DOMAIN, CLOUDFRONT_KEY_PAIR_ID and CLOUDFRONT_PRIVATE_KEY must be set together or all left blank.',
       });
     }
 

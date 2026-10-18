@@ -53,4 +53,23 @@ describe('OpenAPI route catalogue', () => {
     ] as { delete?: { requestBody?: unknown } };
     expect(deleteMessage.delete?.requestBody).toBeDefined();
   });
+
+  it('uses resource-shaped success bodies and no-content responses', () => {
+    const document = buildOpenApiDocument('http://localhost:4000');
+    const genericResponses: string[] = [];
+    for (const [path, pathItem] of Object.entries(document.paths)) {
+      for (const [method, operation] of Object.entries(pathItem)) {
+        const response = (operation as { responses?: Record<string, { content?: Record<string, { schema?: { properties?: { data?: { type?: string; properties?: unknown; additionalProperties?: unknown } } } }> }> }).responses?.['200'];
+        const data = response?.content?.['application/json']?.schema?.properties?.data;
+        if (data?.type === 'object' && data.additionalProperties && !data.properties) {
+          genericResponses.push(`${method} ${path}`);
+        }
+      }
+    }
+    expect(genericResponses).toEqual([]);
+
+    const fileDelete = document.paths['/api/v1/files/{fileId}'] as { delete?: { responses?: Record<string, unknown> } };
+    expect(fileDelete.delete?.responses?.['204']).toBeDefined();
+    expect(fileDelete.delete?.responses?.['200']).toBeUndefined();
+  });
 });

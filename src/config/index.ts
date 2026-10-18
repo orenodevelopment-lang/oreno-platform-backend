@@ -32,6 +32,7 @@ export interface AppConfig {
   readonly session: {
     readonly secret: string;
     readonly cookieName: string;
+    readonly cookieDomain: string | undefined;
     readonly ttlHours: number;
     readonly idleTimeoutMinutes: number;
     readonly csrfCookieName: string;
@@ -156,6 +157,7 @@ function buildConfig(raw: RawEnv): AppConfig {
     session: Object.freeze({
       secret: raw.SESSION_SECRET,
       cookieName: raw.SESSION_COOKIE_NAME,
+      cookieDomain: raw.SESSION_COOKIE_DOMAIN,
       ttlHours: raw.SESSION_TTL_HOURS,
       idleTimeoutMinutes: raw.SESSION_IDLE_TIMEOUT_MINUTES,
       csrfCookieName: raw.CSRF_COOKIE_NAME,
@@ -224,8 +226,12 @@ function buildConfig(raw: RawEnv): AppConfig {
     cloudfront: Object.freeze({
       domain: raw.CLOUDFRONT_DOMAIN,
       keyPairId: raw.CLOUDFRONT_KEY_PAIR_ID,
-      privateKey: raw.CLOUDFRONT_PRIVATE_KEY,
-      enabled: Boolean(raw.CLOUDFRONT_DOMAIN),
+      privateKey: raw.CLOUDFRONT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      enabled: Boolean(
+        raw.CLOUDFRONT_DOMAIN &&
+          raw.CLOUDFRONT_KEY_PAIR_ID &&
+          raw.CLOUDFRONT_PRIVATE_KEY,
+      ),
     }),
 
     malwareScanner: Object.freeze({

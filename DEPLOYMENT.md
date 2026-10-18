@@ -4,7 +4,7 @@ This repository is designed for two Render services sharing one PostgreSQL datab
 
 ## Services and commands
 
-Create a Render PostgreSQL database, a Key Value instance, a web service named for the API, and a background worker. Pin the supported Node major version.
+Create a Render PostgreSQL database, a Key Value instance, a web service named for the API, and a background worker. Pin Node.js 22.12 or later.
 
 | Service | Build command | Start command |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Do not put secrets in the repository, logs, outbox payloads, queue payload summa
 ## Release procedure
 
 1. Back up the production database and review every pending SQL migration, especially enum changes, constraints, and indexes.
-2. Build the exact revision locally and run type checking, lint, `npm run test:all`, Prisma validation, OpenAPI drift check, the production build, and `npm audit --omit=dev`.
+2. Build the exact revision locally with `npm run check:production`, then run `npm run verify:providers -- --live` against production-equivalent provider credentials.
 3. Apply `npm run migrate:deploy` with the direct URL. Stop if Prisma reports drift or a failed migration.
 4. Deploy the worker, then the API. This order ensures new durable events have consumers before new routes emit them.
 5. Check `/health/live`, `/health/startup`, and `/health/ready`; verify PostgreSQL and Key Value report healthy.

@@ -86,6 +86,8 @@ const authContextSchema = z.object({
   isPlatformAdmin: z.boolean(),
   platformRoles: z.array(z.string()),
   permissions: z.array(z.string()).describe('Effective platform and organisation permissions, sorted.'),
+  mfaSatisfied: z.boolean(),
+  sessionExpiresAt: z.string().datetime().nullable(),
   impersonation: z
     .object({
       adminUserId: z.string().uuid(),
