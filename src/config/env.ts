@@ -103,9 +103,11 @@ const schema = z
     CLOUDFRONT_KEY_PAIR_ID: optionalString,
     CLOUDFRONT_PRIVATE_KEY: optionalString,
 
-    MALWARE_SCANNER: z.enum(['none', 'clamav']).default('none'),
+    MALWARE_SCANNER: z.enum(['none', 'clamav', 'guardduty']).default('none'),
     CLAMAV_HOST: optionalString,
     CLAMAV_PORT: integer(3310),
+    GUARDDUTY_SCAN_POLL_SECONDS: z.coerce.number().int().min(5).max(300).default(10),
+    GUARDDUTY_SCAN_TIMEOUT_MINUTES: z.coerce.number().int().min(1).max(60).default(15),
 
     RATE_LIMIT_WINDOW_SECONDS: integer(60),
     RATE_LIMIT_MAX: integer(300),
@@ -295,6 +297,30 @@ const schema = z
         path: ['CLAMAV_HOST'],
         message: 'CLAMAV_HOST is required when MALWARE_SCANNER=clamav.',
       });
+    }
+
+    if (value.MALWARE_SCANNER === 'guardduty') {
+      if (value.STORAGE_DRIVER !== 's3') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STORAGE_DRIVER'],
+          message: 'GuardDuty malware scanning requires STORAGE_DRIVER=s3.',
+        });
+      }
+      if (value.S3_ENDPOINT) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['S3_ENDPOINT'],
+          message: 'GuardDuty malware scanning cannot be used with a custom S3 endpoint.',
+        });
+      }
+      if (!value.KEY_VALUE_URL) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['KEY_VALUE_URL'],
+          message: 'GuardDuty malware scanning requires Key Value for scheduled reconciliation.',
+        });
+      }
     }
 
     // OAuth providers are optional, but a half-configured provider is a mistake.

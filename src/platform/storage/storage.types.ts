@@ -14,6 +14,8 @@ export type BucketKind = 'public' | 'private' | 'quarantine' | 'exports';
 export interface ObjectLocation {
   bucket: BucketKind;
   key: string;
+  /** Exact S3 object version. Local storage ignores this value. */
+  versionId?: string;
 }
 
 export interface CreateUploadUrlInput {
@@ -48,6 +50,12 @@ export interface ObjectMetadata {
   size: number;
   contentType?: string;
   etag?: string;
+  versionId?: string;
+}
+
+export interface CopyObjectOptions {
+  /** Refuse the copy if the selected source version no longer has this ETag. */
+  sourceEtag?: string;
 }
 
 export interface StorageAdapter {
@@ -60,9 +68,10 @@ export interface StorageAdapter {
   headObject(location: ObjectLocation): Promise<ObjectMetadata | undefined>;
   putObject(location: ObjectLocation, body: Buffer | string, contentType?: string): Promise<void>;
   getObject(location: ObjectLocation): Promise<Buffer>;
+  getObjectTags(location: ObjectLocation): Promise<Record<string, string>>;
   deleteObject(location: ObjectLocation): Promise<void>;
   /** Server-side copy, used to promote a file out of quarantine. */
-  copyObject(from: ObjectLocation, to: ObjectLocation): Promise<void>;
+  copyObject(from: ObjectLocation, to: ObjectLocation, options?: CopyObjectOptions): Promise<void>;
 
   /**
    * A directly usable URL for a deliberately public object. Returns a

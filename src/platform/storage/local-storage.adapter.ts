@@ -175,6 +175,10 @@ export class LocalStorageAdapter {
     }
   }
 
+  getObjectTags(_location: { bucket: BucketKind; key: string }): Promise<Record<string, string>> {
+    return Promise.resolve({});
+  }
+
   createReadStream(location: { bucket: BucketKind; key: string }): NodeJS.ReadableStream {
     return createReadStream(objectPath(location.bucket, location.key));
   }

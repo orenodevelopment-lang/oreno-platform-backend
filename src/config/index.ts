@@ -94,6 +94,10 @@ export interface AppConfig {
   readonly malwareScanner: {
     readonly driver: RawEnv['MALWARE_SCANNER'];
     readonly clamav: { readonly host: string; readonly port: number } | undefined;
+    readonly guardDuty: {
+      readonly pollSeconds: number;
+      readonly timeoutMinutes: number;
+    };
   };
 
   readonly rateLimit: {
@@ -228,9 +232,7 @@ function buildConfig(raw: RawEnv): AppConfig {
       keyPairId: raw.CLOUDFRONT_KEY_PAIR_ID,
       privateKey: raw.CLOUDFRONT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       enabled: Boolean(
-        raw.CLOUDFRONT_DOMAIN &&
-          raw.CLOUDFRONT_KEY_PAIR_ID &&
-          raw.CLOUDFRONT_PRIVATE_KEY,
+        raw.CLOUDFRONT_DOMAIN && raw.CLOUDFRONT_KEY_PAIR_ID && raw.CLOUDFRONT_PRIVATE_KEY,
       ),
     }),
 
@@ -240,6 +242,10 @@ function buildConfig(raw: RawEnv): AppConfig {
         raw.MALWARE_SCANNER === 'clamav' && raw.CLAMAV_HOST
           ? Object.freeze({ host: raw.CLAMAV_HOST, port: raw.CLAMAV_PORT })
           : undefined,
+      guardDuty: Object.freeze({
+        pollSeconds: raw.GUARDDUTY_SCAN_POLL_SECONDS,
+        timeoutMinutes: raw.GUARDDUTY_SCAN_TIMEOUT_MINUTES,
+      }),
     }),
 
     rateLimit: Object.freeze({

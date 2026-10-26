@@ -6,10 +6,10 @@ This repository is designed for two Render services sharing one PostgreSQL datab
 
 Create a Render PostgreSQL database, a Key Value instance, a web service named for the API, and a background worker. Pin Node.js 22.12 or later.
 
-| Service | Build command | Start command |
-| --- | --- | --- |
-| API | `npm ci && npm run prisma:generate && npm run build` | `npm run start` |
-| Worker | `npm ci && npm run prisma:generate && npm run build` | `npm run start:worker` |
+| Service | Build command                                        | Start command          |
+| ------- | ---------------------------------------------------- | ---------------------- |
+| API     | `npm ci && npm run prisma:generate && npm run build` | `npm run start`        |
+| Worker  | `npm ci && npm run prisma:generate && npm run build` | `npm run start:worker` |
 
 Run `npm run migrate:deploy` once as a pre-deploy/release command against the direct PostgreSQL URL. Run `npm run db:seed` after the first migration and whenever the permission catalogue changes. The seed is idempotent and never creates a production default password.
 
@@ -24,7 +24,7 @@ Start from `.env.example` and set production values in Render, including:
 - a real email provider and verified sender. Keep `SESSION_SECRET` stable within a release because it also protects staged email intent content.
 - `STORAGE_DRIVER=s3`, AWS credentials/role, four private buckets, and storage TTL/size limits.
 - CloudFront domain/key pair/private key when signed distribution URLs are enabled.
-- `MALWARE_SCANNER=clamav` and reachable scanner host/port. Production rejects the `none` scanner.
+- `MALWARE_SCANNER=guardduty` with versioning and GuardDuty scan-result tagging enabled on the quarantine bucket. Grant the application `s3:GetObjectTagging`, `s3:GetObjectVersionTagging`, and `s3:GetObjectVersion`; ClamAV remains an alternative requiring a reachable host/port. Production rejects the `none` scanner.
 - bootstrap owner emails, monitoring DSN, metrics setting, and the client-approved replacement policy.
 
 Do not put secrets in the repository, logs, outbox payloads, queue payload summaries, or OpenAPI output.
@@ -34,7 +34,7 @@ Do not put secrets in the repository, logs, outbox payloads, queue payload summa
 1. Back up the production database and review every pending SQL migration, especially enum changes, constraints, and indexes.
 2. Build the exact revision locally with `npm run check:production`, then run `npm run verify:providers -- --live` against production-equivalent provider credentials.
 3. Apply `npm run migrate:deploy` with the direct URL. Stop if Prisma reports drift or a failed migration.
-4. Deploy the worker, then the API. This order ensures new durable events have consumers before new routes emit them.
+4. Deploy the worker, then the API. This order ensures new durable events and GuardDuty scan reconciliation have consumers before new routes emit them.
 5. Check `/health/live`, `/health/startup`, and `/health/ready`; verify PostgreSQL and Key Value report healthy.
 6. Perform the smoke checks below and review structured logs, failed outbox rows, email outcomes, and background-job outcomes.
 

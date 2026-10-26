@@ -101,6 +101,7 @@ export const MetricName = {
   JOB_COMPLETED: 'job_completed',
   SOCKET_CONNECTIONS: 'socket_connections',
   UPLOAD_FAILURE: 'upload_failure',
+  FILE_SCAN_COMPLETED: 'file_scan_completed',
   EMAIL_FAILURE: 'email_failure',
   OUTBOX_PUBLISHED: 'outbox_published',
   OUTBOX_FAILED: 'outbox_failed',

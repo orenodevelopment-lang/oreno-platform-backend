@@ -31,7 +31,7 @@ The defaults expose the API at `http://localhost:4000`, Swagger UI at `/docs` ou
 - `src/worker.ts` starts outbox, email, notification, file, export, reminder, lifecycle, weekly-digest, invitation-reminder, and maintenance processors.
 - PostgreSQL stores business data, sessions, audit history, outbox records, encrypted email intents, delivery outcomes, and job outcomes.
 - Redis stores BullMQ queues and can back Socket.IO scale-out. Losing Redis does not grant access or erase business records.
-- `STORAGE_DRIVER=local` and `EMAIL_PROVIDER=capture|log` support local work. Production uses private S3, optional CloudFront signed access, ClamAV, and a configured email provider.
+- `STORAGE_DRIVER=local` and `EMAIL_PROVIDER=capture|log` support local work. Production uses private S3, optional CloudFront signed access, GuardDuty Malware Protection for S3 or ClamAV, and a configured email provider.
 
 The API prefix is `/api/v1`. Responses use `{ "data": ..., "meta": ... }` or `{ "error": { "code", "message", "requestId", ... } }`. Date-time values are UTC ISO strings; date-only employment fields use `YYYY-MM-DD`; money is returned as decimal strings with currency and unit. State-changing cookie-authenticated requests must send the configured CSRF header.
 
@@ -85,6 +85,6 @@ Keep generated frontend files in the frontend repository and regenerate them whe
 
 ## Live provider verification
 
-`npm run verify:providers` validates provider configuration without sending traffic. Run `npm run verify:providers -- --live` only in a controlled staging or production-equivalent environment. The live mode sends a marked test email, exercises all configured S3 buckets, downloads a configured CloudFront object, scans a clean ClamAV payload, checks enabled OAuth authorization endpoints and submits an error-monitoring event. See [PROVIDER_VERIFICATION.md](PROVIDER_VERIFICATION.md).
+`npm run verify:providers` validates provider configuration without sending traffic. Run `npm run verify:providers -- --live` only in a controlled staging or production-equivalent environment. The live mode sends a marked test email, exercises configured S3 buckets, verifies a clean GuardDuty object-version tag or ClamAV payload, downloads a configured CloudFront object, checks enabled OAuth authorization endpoints and submits an error-monitoring event. See [PROVIDER_VERIFICATION.md](PROVIDER_VERIFICATION.md).
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the manual Render release procedure and [HANDOFF.md](HANDOFF.md) for implementation decisions and verification limits.

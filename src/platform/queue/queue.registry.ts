@@ -48,6 +48,7 @@ export const JOB_NAMES = {
   SWEEP_OUTBOX: 'sweep-outbox',
   FAN_OUT_NOTIFICATION: 'fan-out-notification',
   SCAN_FILE: 'scan-file',
+  POLL_GUARDDUTY_SCANS: 'poll-guardduty-scans',
   CLEAN_ORPHANED_FILES: 'clean-orphaned-files',
   GENERATE_EXPORT: 'generate-export',
   DELETE_EXPIRED_EXPORTS: 'delete-expired-exports',

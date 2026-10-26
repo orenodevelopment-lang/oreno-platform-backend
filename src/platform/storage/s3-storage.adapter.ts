@@ -2,6 +2,7 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  GetObjectTaggingCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -9,7 +10,13 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getSignedUrl as getCloudFrontUrl } from '@aws-sdk/cloudfront-signer';
 import { loadConfig } from '../../config/index.js';
-import { StorageError, type BucketKind, type ObjectMetadata } from './storage.types.js';
+import {
+  StorageError,
+  type BucketKind,
+  type CopyObjectOptions,
+  type ObjectLocation,
+  type ObjectMetadata,
+} from './storage.types.js';
 
 /**
  * S3 storage driver.
@@ -141,21 +148,20 @@ export class S3StorageAdapter {
     );
   }
 
-  async headObject(location: {
-    bucket: BucketKind;
-    key: string;
-  }): Promise<ObjectMetadata | undefined> {
+  async headObject(location: ObjectLocation): Promise<ObjectMetadata | undefined> {
     try {
       const result = await this.client.send(
         new HeadObjectCommand({
           Bucket: this.bucketName(location.bucket),
           Key: location.key,
+          ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
       return {
         size: result.ContentLength ?? 0,
         ...(result.ContentType ? { contentType: result.ContentType } : {}),
         ...(result.ETag ? { etag: result.ETag } : {}),
+        ...(result.VersionId ? { versionId: result.VersionId } : {}),
       };
     } catch (error) {
       if (isNotFound(error)) return undefined;
@@ -182,12 +188,13 @@ export class S3StorageAdapter {
     }
   }
 
-  async getObject(location: { bucket: BucketKind; key: string }): Promise<Buffer> {
+  async getObject(location: ObjectLocation): Promise<Buffer> {
     try {
       const result = await this.client.send(
         new GetObjectCommand({
           Bucket: this.bucketName(location.bucket),
           Key: location.key,
+          ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
       if (!result.Body) throw new StorageError('Object has no body', 'getObject');
@@ -198,12 +205,32 @@ export class S3StorageAdapter {
     }
   }
 
-  async deleteObject(location: { bucket: BucketKind; key: string }): Promise<void> {
+  async getObjectTags(location: ObjectLocation): Promise<Record<string, string>> {
+    try {
+      const result = await this.client.send(
+        new GetObjectTaggingCommand({
+          Bucket: this.bucketName(location.bucket),
+          Key: location.key,
+          ...(location.versionId ? { VersionId: location.versionId } : {}),
+        }),
+      );
+      return Object.fromEntries(
+        (result.TagSet ?? []).flatMap((tag) =>
+          tag.Key !== undefined && tag.Value !== undefined ? [[tag.Key, tag.Value]] : [],
+        ),
+      );
+    } catch (error) {
+      throw new StorageError('Could not read object tags', 'getObjectTags', error);
+    }
+  }
+
+  async deleteObject(location: ObjectLocation): Promise<void> {
     try {
       await this.client.send(
         new DeleteObjectCommand({
           Bucket: this.bucketName(location.bucket),
           Key: location.key,
+          ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
     } catch (error) {
@@ -212,15 +239,19 @@ export class S3StorageAdapter {
   }
 
   async copyObject(
-    from: { bucket: BucketKind; key: string },
-    to: { bucket: BucketKind; key: string },
+    from: ObjectLocation,
+    to: ObjectLocation,
+    options: CopyObjectOptions = {},
   ): Promise<void> {
     try {
+      const encodedKey = from.key.split('/').map(encodeURIComponent).join('/');
+      const versionQuery = from.versionId ? `?versionId=${encodeURIComponent(from.versionId)}` : '';
       await this.client.send(
         new CopyObjectCommand({
           Bucket: this.bucketName(to.bucket),
           Key: to.key,
-          CopySource: `${this.bucketName(from.bucket)}/${encodeURIComponent(from.key)}`,
+          CopySource: `${this.bucketName(from.bucket)}/${encodedKey}${versionQuery}`,
+          ...(options.sourceEtag ? { CopySourceIfMatch: options.sourceEtag } : {}),
         }),
       );
     } catch (error) {

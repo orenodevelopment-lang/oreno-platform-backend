@@ -9,6 +9,8 @@ Set the normal production variables from `.env.example`, then add:
 ```env
 PROVIDER_TEST_EMAIL_TO=operations-test@example.com
 PROVIDER_TEST_CLOUDFRONT_OBJECT_KEY=provider-verification/known-clean-object.txt
+# Optional staging-only malware probe; point to a locally supplied EICAR file.
+PROVIDER_TEST_GUARDDUTY_EICAR_FILE=C:\path\to\eicar.com.txt
 ```
 
 Run configuration-only validation first:
@@ -23,9 +25,9 @@ Run network probes in an approved staging or production-equivalent environment:
 npm run verify:providers -- --live
 ```
 
-Live mode verifies the configured email adapter, S3 put/head/get/delete in the public, private, quarantine and exports buckets, a signed CloudFront GET when enabled, a clean ClamAV INSTREAM scan, enabled OAuth authorization endpoints, and an error-monitoring event. The script exits non-zero when a configured probe fails.
+Live mode verifies the configured email adapter, S3 put/head/get/delete, a signed CloudFront GET when enabled, enabled OAuth authorization endpoints, and an error-monitoring event. It also waits for an exact-version `NO_THREATS_FOUND` object tag when GuardDuty is configured, or performs a clean INSTREAM probe when ClamAV is configured. The script exits non-zero when a configured probe fails.
 
-The S3 probe cleans up its own objects. The email and error-monitoring probes intentionally create marked external records. Use a dedicated recipient and confirm the event in the monitoring provider.
+The S3 and GuardDuty probes clean up their own objects. The quarantine bucket must have versioning and GuardDuty-managed object tagging enabled. Leave `PROVIDER_TEST_GUARDDUTY_EICAR_FILE` unset in production; use it only for an explicitly controlled staging test. The email and error-monitoring probes intentionally create marked external records. Use a dedicated recipient and confirm the event in the monitoring provider.
 
 ## Manual sign-off
 

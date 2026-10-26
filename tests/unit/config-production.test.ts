@@ -61,4 +61,30 @@ describe('production provider and browser topology configuration', () => {
     const parsed = parseEnv(productionEnv({ EMAIL_PROVIDER: 'ses', EMAIL_PROVIDER_API_KEY: '' }));
     expect(parsed.EMAIL_PROVIDER).toBe('ses');
   });
+
+  it('accepts GuardDuty without ClamAV connection variables', () => {
+    const parsed = parseEnv(
+      productionEnv({
+        MALWARE_SCANNER: 'guardduty',
+        CLAMAV_HOST: '',
+      }),
+    );
+    expect(parsed.MALWARE_SCANNER).toBe('guardduty');
+    expect(parsed.GUARDDUTY_SCAN_POLL_SECONDS).toBe(10);
+    expect(parsed.GUARDDUTY_SCAN_TIMEOUT_MINUTES).toBe(15);
+  });
+
+  it('requires AWS S3 and Key Value for GuardDuty reconciliation', () => {
+    expectInvalid(
+      { MALWARE_SCANNER: 'guardduty', STORAGE_DRIVER: 'local', KEY_VALUE_URL: '' },
+      'GuardDuty malware scanning requires STORAGE_DRIVER=s3',
+    );
+  });
+
+  it('rejects a custom S3-compatible endpoint for GuardDuty', () => {
+    expectInvalid(
+      { MALWARE_SCANNER: 'guardduty', CLAMAV_HOST: '', S3_ENDPOINT: 'http://minio:9000' },
+      'GuardDuty malware scanning cannot be used with a custom S3 endpoint',
+    );
+  });
 });

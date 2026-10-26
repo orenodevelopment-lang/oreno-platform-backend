@@ -1,11 +1,12 @@
 import type { Job } from 'bullmq';
+import { loadConfig } from '../config/index.js';
 import { createModuleLogger } from '../common/logging/logger.js';
 import { pruneExpiredSessions } from '../modules/auth/session.service.js';
 import { dispatchDomainEvent } from '../platform/events/event-bus.js';
 import { isKnownEventKey } from '../platform/events/event-catalog.js';
 import { deliverEmail, type EmailJobPayload } from '../platform/email/email.service.js';
 import { registerEmailEventHandlers } from '../platform/email/email.events.js';
-import { processFileScan } from '../modules/files/file.service.js';
+import { processFileScan, reconcileGuardDutyScans } from '../modules/files/file.service.js';
 import { expireExports, processExport } from '../modules/exports/index.js';
 import { registerNotificationEventHandlers } from '../modules/notifications/index.js';
 import { activateDuePlacements, expireStaleOffers } from './lifecycle.service.js';
@@ -109,10 +110,21 @@ function registerFileWorker(): void {
   registerWorker(
     QUEUE_NAMES.FILES,
     async (job: Job) => {
-      if (job.name !== JOB_NAMES.SCAN_FILE) throw new Error(`No file handler for job: ${job.name}`);
-      const data = job.data as { fileId?: unknown };
-      if (typeof data.fileId !== 'string') throw new Error('File scan job is missing fileId.');
-      await processFileScan(data.fileId);
+      switch (job.name) {
+        case JOB_NAMES.SCAN_FILE: {
+          const data = job.data as { fileId?: unknown };
+          if (typeof data.fileId !== 'string') throw new Error('File scan job is missing fileId.');
+          await processFileScan(data.fileId);
+          return;
+        }
+        case JOB_NAMES.POLL_GUARDDUTY_SCANS: {
+          const summary = await reconcileGuardDutyScans();
+          if (summary.checked > 0) log.info(summary, 'guardduty file scans reconciled');
+          return;
+        }
+        default:
+          throw new Error(`No file handler for job: ${job.name}`);
+      }
     },
     { concurrency: 4 },
   );
@@ -224,6 +236,20 @@ function startQueueHealthReporter(): () => void {
  */
 async function registerScheduledJobs(): Promise<void> {
   const maintenance = getQueue(QUEUE_NAMES.MAINTENANCE);
+
+  if (loadConfig().malwareScanner.driver === 'guardduty') {
+    const files = getQueue(QUEUE_NAMES.FILES);
+    await files.add(
+      JOB_NAMES.POLL_GUARDDUTY_SCANS,
+      {},
+      {
+        repeat: { every: Math.max(5, loadConfig().malwareScanner.guardDuty.pollSeconds) * 1_000 },
+        jobId: 'schedule-poll-guardduty-scans',
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
+  }
 
   await maintenance.add(
     JOB_NAMES.SWEEP_OUTBOX,

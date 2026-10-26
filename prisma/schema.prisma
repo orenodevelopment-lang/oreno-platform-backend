@@ -2815,6 +2815,10 @@ model FileObject {
   mimeType       String         @map("mime_type") @db.VarChar(160)
   sizeBytes      BigInt         @map("size_bytes")
   checksumSha256 String?        @map("checksum_sha256") @db.Char(64)
+  quarantineVersionId String?   @map("quarantine_version_id") @db.VarChar(1024)
+  quarantineEtag      String?   @map("quarantine_etag") @db.VarChar(255)
+  scanStartedAt       DateTime? @map("scan_started_at") @db.Timestamptz(3)
+  scanDeadlineAt      DateTime? @map("scan_deadline_at") @db.Timestamptz(3)
   /** Populated only after a successful scan; null means "not yet verified". */
   scannedAt      DateTime?      @map("scanned_at") @db.Timestamptz(3)
   readyAt        DateTime?      @map("ready_at") @db.Timestamptz(3)
@@ -2835,6 +2839,7 @@ model FileObject {
   @@index([organisationId, category, status])
   @@index([ownerId, category])
   @@index([status, createdAt])
+  @@index([status, scanStartedAt])
   @@index([expiresAt])
   @@map("file_objects")
 }

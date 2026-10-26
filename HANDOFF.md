@@ -37,7 +37,7 @@ OpenAPI now inventories all 298 mounted operations in `openapi/openapi.json`. Mu
 
 ## External configuration still required
 
-No production credentials were created or stored. Live verification still needs the client's Render PostgreSQL/Key Value services, email provider, OAuth applications, S3 buckets/IAM, CloudFront signing key, ClamAV endpoint, monitoring DSN, production origins/domains, bootstrap owners, and approved policy values. Provider adapters and fail-safe production validation are implemented.
+No production credentials were created or stored. Live verification still needs the client's Render PostgreSQL/Key Value services, email provider, OAuth applications, S3 buckets/IAM, GuardDuty protection and tagging on the versioned quarantine bucket (or a ClamAV endpoint), CloudFront signing key, monitoring DSN, production origins/domains, bootstrap owners, and approved policy values. Provider adapters and fail-safe production validation are implemented.
 
 The full development audit still reports seven advisories in the Vitest 2/Vite test toolchain. They are excluded from the deployed runtime; the fully patched Vitest major requires Node 22.12 or later, while this repository still supports Node 20.11. Patched `deepmerge-ts` and `source-map-js` versions are pinned through npm overrides and Prisma validation passes. Upgrade Node and Vitest/coverage together as a separate toolchain change.
 
