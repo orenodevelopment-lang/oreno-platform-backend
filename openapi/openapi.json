@@ -620,6 +620,20 @@
                                 "DEACTIVATED"
                               ]
                             },
+                            "registrationIntent": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "TALENT",
+                                    "COMPANY_OWNER"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "firstName": {
                               "type": "string"
                             },
@@ -689,6 +703,7 @@
                             "email",
                             "emailVerifiedAt",
                             "status",
+                            "registrationIntent",
                             "firstName",
                             "lastName",
                             "displayName",
@@ -1085,6 +1100,32 @@
               "type": "string",
               "maxLength": 2048
             }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "login",
+                "talent_signup"
+              ],
+              "default": "login"
+            }
+          },
+          {
+            "name": "acceptTerms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false"
+            }
           }
         ],
         "responses": {
@@ -1105,14 +1146,10 @@
                         "authorizationUrl": {
                           "type": "string",
                           "format": "uri"
-                        },
-                        "state": {
-                          "type": "string"
                         }
                       },
                       "required": [
-                        "authorizationUrl",
-                        "state"
+                        "authorizationUrl"
                       ],
                       "additionalProperties": false
                     },
@@ -1139,7 +1176,7 @@
       "get": {
         "operationId": "authOAuthCallback",
         "summary": "Complete a federated sign-in",
-        "description": "Exchanges the authorization code, resolves or creates the local account, and sets the session cookies. `redirectTo` echoes the validated post-login destination.",
+        "description": "Exchanges the authorization code, resolves or creates the local account, sets the session cookies, and redirects the browser to the validated frontend callback URL.",
         "tags": [
           "auth"
         ],
@@ -1180,56 +1217,8 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Signed in. Session and CSRF cookies are set on this response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "data",
-                    "meta"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "userId": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        "created": {
-                          "type": "boolean",
-                          "description": "True when this callback created the local account."
-                        },
-                        "linked": {
-                          "type": "boolean",
-                          "description": "True when the identity was linked to an existing account."
-                        },
-                        "redirectTo": {
-                          "type": [
-                            "string",
-                            "null"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "userId",
-                        "created",
-                        "linked",
-                        "redirectTo"
-                      ],
-                      "additionalProperties": false
-                    },
-                    "meta": {
-                      "type": "object",
-                      "description": "Always present; `{}` when there is nothing to add. Paginated list responses add `page` fields.",
-                      "additionalProperties": true
-                    }
-                  }
-                }
-              }
-            }
+          "303": {
+            "description": "Signed in. Session and CSRF cookies are set before redirecting to the frontend."
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
@@ -1493,6 +1482,20 @@
                                 "DEACTIVATED"
                               ]
                             },
+                            "registrationIntent": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "TALENT",
+                                    "COMPANY_OWNER"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "firstName": {
                               "type": "string"
                             },
@@ -1562,6 +1565,7 @@
                             "email",
                             "emailVerifiedAt",
                             "status",
+                            "registrationIntent",
                             "firstName",
                             "lastName",
                             "displayName",
@@ -1828,6 +1832,20 @@
                                 "DEACTIVATED"
                               ]
                             },
+                            "registrationIntent": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "TALENT",
+                                    "COMPANY_OWNER"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "firstName": {
                               "type": "string"
                             },
@@ -1897,6 +1915,7 @@
                             "email",
                             "emailVerifiedAt",
                             "status",
+                            "registrationIntent",
                             "firstName",
                             "lastName",
                             "displayName",

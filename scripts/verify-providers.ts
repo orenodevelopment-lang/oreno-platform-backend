@@ -89,7 +89,7 @@ await check('s3', async () => {
     if (body.toString('utf8') !== 'oreno-provider-verification') throw new Error(`${bucket} bucket returned different content.`);
     await storage.deleteObject({ bucket, key });
   }
-  return `put/head/get/delete succeeded in ${buckets.length} configured buckets`;
+  return `put/head/get/delete succeeded in ${buckets.length} logical storage areas`;
 }, config.storage.driver === 's3');
 
 await check('guardduty', async () => {

@@ -72,6 +72,7 @@ export interface PublicUser {
   email: string;
   emailVerifiedAt: string | null;
   status: User['status'];
+  registrationIntent: User['registrationIntent'];
   firstName: string;
   lastName: string;
   displayName: string | null;
@@ -93,6 +94,7 @@ export function toPublicUser(user: User, twoFactorEnabled = false): PublicUser {
     email: user.email,
     emailVerifiedAt: user.emailVerifiedAt?.toISOString() ?? null,
     status: user.status,
+    registrationIntent: user.registrationIntent,
     firstName: user.firstName,
     lastName: user.lastName,
     displayName: user.displayName,
@@ -144,7 +146,7 @@ export async function register(
   const passwordHash = await hashPassword(input.password);
   const { token, hash } = generateToken(32);
   const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
-  const verificationUrl = `${loadConfig().appUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
+  const verificationUrl = `${loadConfig().appUrl.replace(/\/$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
 
   const registration = await prisma.$transaction(async (tx) => {
     const created = await repository.createUserWithCredential(
@@ -410,8 +412,12 @@ function assertAccountUsable(user: {
 }): void {
   switch (user.status) {
     case 'ACTIVE':
-    case 'PENDING_VERIFICATION':
       return;
+    case 'PENDING_VERIFICATION':
+      throw new UnauthenticatedError(
+        ErrorCode.EMAIL_NOT_VERIFIED,
+        'Verify your email address before signing in.',
+      );
     case 'SUSPENDED':
       throw new UnauthenticatedError(
         ErrorCode.ACCOUNT_SUSPENDED,
@@ -516,7 +522,7 @@ export async function resendVerification(email: string, meta: RequestMeta): Prom
 
   const { token, hash } = generateToken(32);
   const config = loadConfig();
-  const verificationUrl = `${config.appUrl.replace(/\/$/, '')}/verify-email?token=${encodeURIComponent(token)}`;
+  const verificationUrl = `${config.appUrl.replace(/\/$/, '')}/auth/verify-email?token=${encodeURIComponent(token)}`;
   await prisma.$transaction(async (tx) => {
     // Only the newest link should work; supersede any outstanding ones.
     await repository.invalidateAuthTokens({ userId: user.id, purpose: 'EMAIL_VERIFICATION' }, tx);

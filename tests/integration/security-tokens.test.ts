@@ -1,12 +1,14 @@
 import { authenticator } from 'otplib';
 import { describe, expect, it } from 'vitest';
 import { getPrisma } from '../../src/database/prisma.js';
+import { loadConfig } from '../../src/config/index.js';
 import { generateToken, hashToken } from '../../src/common/security/tokens.js';
 import {
   consumeAuthToken,
   createAuthToken,
 } from '../../src/modules/auth/auth.repository.js';
 import { buildSignedState, readSignedState } from '../../src/modules/auth/auth.oauth.js';
+import { resolveOAuthUser } from '../../src/modules/auth/auth.oauth-linking.js';
 import {
   beginTwoFactorSetup,
   confirmTwoFactor,
@@ -68,7 +70,11 @@ describe('expiring, hashed, single-use security material', () => {
 
   it('binds OAuth state to its browser, hashes it at rest, expires it, and prevents replay', async () => {
     const prisma = getPrisma();
-    const attempt = await buildSignedState('google', undefined);
+    const callbackUrl = `${loadConfig().appUrl.replace(/\/$/, '')}/auth/oauth-callback`;
+    const attempt = await buildSignedState('google', callbackUrl, {
+      mode: 'talent_signup',
+      acceptedTerms: true,
+    });
     const nonce = oauthNonce(attempt.state);
     const stored = await prisma.authToken.findUniqueOrThrow({
       where: { tokenHash: hashToken(nonce) },
@@ -81,6 +87,11 @@ describe('expiring, hashed, single-use security material', () => {
     ).rejects.toMatchObject({ code: 'OAUTH_STATE_INVALID', status: 403 });
     const consumed = await readSignedState(attempt.state, 'google', attempt.browserToken);
     expect(consumed.codeVerifier).toBeTruthy();
+    expect(consumed).toMatchObject({
+      redirectTo: callbackUrl,
+      mode: 'talent_signup',
+      acceptedTerms: true,
+    });
     await expect(
       readSignedState(attempt.state, 'google', attempt.browserToken),
     ).rejects.toMatchObject({ code: 'OAUTH_STATE_INVALID', status: 403 });
@@ -143,6 +154,35 @@ describe('expiring, hashed, single-use security material', () => {
         expiredSetup.setupToken,
       ),
     ).rejects.toMatchObject({ code: 'TOKEN_EXPIRED', status: 401 });
+  });
+
+  it('creates a complete talent account only through an explicit OAuth signup', async () => {
+    const marker = suffix();
+    const identity = {
+      provider: 'google' as const,
+      providerUserId: `oauth-${marker}`,
+      email: `oauth-${marker}@example.test`,
+      emailVerified: true,
+      displayName: 'OAuth Talent',
+      avatarUrl: undefined,
+    };
+
+    await expect(
+      resolveOAuthUser(identity, {}, { mode: 'login', acceptedTerms: false }),
+    ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS', status: 401 });
+
+    const result = await resolveOAuthUser(identity, {}, {
+      mode: 'talent_signup',
+      acceptedTerms: true,
+    });
+    expect(result).toMatchObject({ created: true, linked: false });
+    const prisma = getPrisma();
+    expect(await prisma.talentProfile.count({ where: { userId: result.userId } })).toBe(1);
+    expect(
+      await prisma.consentRecord.count({
+        where: { userId: result.userId, purpose: 'TERMS_AND_PRIVACY', granted: true },
+      }),
+    ).toBe(1);
   });
 
   it('accepts a hashed invitation once and rejects expired invitations', async () => {

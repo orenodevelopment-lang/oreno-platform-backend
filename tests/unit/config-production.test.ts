@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildConfigFromEnv } from '../../src/config/index.js';
 import { EnvironmentValidationError, parseEnv } from '../../src/config/env.js';
 
 function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
@@ -19,10 +20,8 @@ function productionEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
     AWS_REGION: 'eu-west-1',
     AWS_ACCESS_KEY_ID: 'test-access-key',
     AWS_SECRET_ACCESS_KEY: 'test-secret-key',
-    S3_PUBLIC_BUCKET: 'oreno-public',
-    S3_PRIVATE_BUCKET: 'oreno-private',
+    S3_APPLICATION_BUCKET: 'oreno-application',
     S3_QUARANTINE_BUCKET: 'oreno-quarantine',
-    S3_EXPORT_BUCKET: 'oreno-exports',
     MALWARE_SCANNER: 'clamav',
     CLAMAV_HOST: 'clamav.internal',
     ERROR_MONITORING_DSN: 'https://public@example.ingest.sentry.io/1',
@@ -43,6 +42,54 @@ function expectInvalid(overrides: NodeJS.ProcessEnv, expected: string): void {
 describe('production provider and browser topology configuration', () => {
   it('accepts the complete production baseline', () => {
     expect(parseEnv(productionEnv()).NODE_ENV).toBe('production');
+  });
+
+  it('maps logical storage areas to two physical buckets and application prefixes', () => {
+    const storage = buildConfigFromEnv(productionEnv()).storage;
+
+    expect(storage.buckets).toEqual({
+      public: 'oreno-application',
+      private: 'oreno-application',
+      quarantine: 'oreno-quarantine',
+      exports: 'oreno-application',
+    });
+    expect(storage.prefixes).toEqual({
+      public: 'public',
+      private: 'private',
+      quarantine: '',
+      exports: 'exports',
+    });
+  });
+
+  it('accepts the legacy four-bucket configuration during migration', () => {
+    const parsed = parseEnv(
+      productionEnv({
+        S3_APPLICATION_BUCKET: '',
+        S3_PUBLIC_BUCKET: 'oreno-public',
+        S3_PRIVATE_BUCKET: 'oreno-private',
+        S3_EXPORT_BUCKET: 'oreno-exports',
+      }),
+    );
+    expect(parsed.S3_PUBLIC_BUCKET).toBe('oreno-public');
+  });
+
+  it('requires an application bucket and a separate quarantine bucket', () => {
+    expectInvalid({ S3_APPLICATION_BUCKET: '' }, 'S3_APPLICATION_BUCKET is required');
+    expectInvalid(
+      { S3_QUARANTINE_BUCKET: 'oreno-application' },
+      'S3_QUARANTINE_BUCKET must be separate',
+    );
+  });
+
+  it('accepts combined API and worker mode when Key Value is configured', () => {
+    expect(parseEnv(productionEnv({ RUN_WORKER_IN_API: 'true' })).RUN_WORKER_IN_API).toBe(true);
+  });
+
+  it('requires Key Value when workers run in the API process', () => {
+    expectInvalid(
+      { RUN_WORKER_IN_API: 'true', KEY_VALUE_URL: '' },
+      'RUN_WORKER_IN_API requires KEY_VALUE_URL',
+    );
   });
 
   it('requires a shared cookie domain across sibling app and API hosts', () => {

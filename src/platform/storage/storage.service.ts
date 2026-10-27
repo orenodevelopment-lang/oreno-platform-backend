@@ -58,7 +58,7 @@ export function buildObjectKey(input: {
 
 export function bucketForCategory(category: string): BucketKind {
   switch (category) {
-    // Only genuinely public assets belong in the public bucket: a profile photo
+    // Only genuinely public assets belong in the public storage area: a profile photo
     // and an organisation logo are shown to anyone who can see the profile.
     // Every other category is private and served through a signed URL.
     case 'PROFILE_PHOTO':

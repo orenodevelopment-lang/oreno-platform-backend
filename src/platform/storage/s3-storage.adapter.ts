@@ -21,7 +21,9 @@ import {
 /**
  * S3 storage driver.
  *
- * Every bucket stays private. Uploads use a pre-signed PUT that pins the
+ * Both physical buckets stay private. The application bucket uses public,
+ * private and exports prefixes while quarantine remains a separate bucket.
+ * Uploads use a pre-signed PUT that pins the
  * content type and a content-length range, so a client cannot use the signature
  * to store a different object type or an unbounded payload. Downloads use a
  * pre-signed GET unless the object is in the public bucket and CloudFront is
@@ -53,9 +55,12 @@ export class S3StorageAdapter {
     });
   }
 
-  private bucketName(kind: BucketKind): string {
-    const { buckets } = loadConfig().storage;
-    return buckets[kind];
+  private objectLocation(kind: BucketKind, key: string): { bucket: string; key: string } {
+    const { buckets, prefixes } = loadConfig().storage;
+    return {
+      bucket: buckets[kind],
+      key: prefixObjectKey(prefixes[kind], key),
+    };
   }
 
   async createUploadUrl(input: {
@@ -72,9 +77,10 @@ export class S3StorageAdapter {
     expiresAt: Date;
   }> {
     try {
+      const location = this.objectLocation(input.bucket, input.key);
       const command = new PutObjectCommand({
-        Bucket: this.bucketName(input.bucket),
-        Key: input.key,
+        Bucket: location.bucket,
+        Key: location.key,
         ContentType: input.contentType,
         ContentLength: input.contentLength,
       });
@@ -111,13 +117,15 @@ export class S3StorageAdapter {
     const config = loadConfig();
 
     if (input.bucket === 'public' && config.cloudfront.enabled) {
-      return this.cloudFrontUrl(input.key, input.expiresInSeconds);
+      const location = this.objectLocation(input.bucket, input.key);
+      return this.cloudFrontUrl(location.key, input.expiresInSeconds);
     }
 
     try {
+      const location = this.objectLocation(input.bucket, input.key);
       const command = new GetObjectCommand({
-        Bucket: this.bucketName(input.bucket),
-        Key: input.key,
+        Bucket: location.bucket,
+        Key: location.key,
         ...(input.downloadFilename
           ? { ResponseContentDisposition: buildDisposition(input.downloadFilename) }
           : {}),
@@ -150,10 +158,11 @@ export class S3StorageAdapter {
 
   async headObject(location: ObjectLocation): Promise<ObjectMetadata | undefined> {
     try {
+      const physical = this.objectLocation(location.bucket, location.key);
       const result = await this.client.send(
         new HeadObjectCommand({
-          Bucket: this.bucketName(location.bucket),
-          Key: location.key,
+          Bucket: physical.bucket,
+          Key: physical.key,
           ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
@@ -175,10 +184,11 @@ export class S3StorageAdapter {
     contentType?: string,
   ): Promise<void> {
     try {
+      const physical = this.objectLocation(location.bucket, location.key);
       await this.client.send(
         new PutObjectCommand({
-          Bucket: this.bucketName(location.bucket),
-          Key: location.key,
+          Bucket: physical.bucket,
+          Key: physical.key,
           Body: body,
           ...(contentType ? { ContentType: contentType } : {}),
         }),
@@ -190,10 +200,11 @@ export class S3StorageAdapter {
 
   async getObject(location: ObjectLocation): Promise<Buffer> {
     try {
+      const physical = this.objectLocation(location.bucket, location.key);
       const result = await this.client.send(
         new GetObjectCommand({
-          Bucket: this.bucketName(location.bucket),
-          Key: location.key,
+          Bucket: physical.bucket,
+          Key: physical.key,
           ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
@@ -207,10 +218,11 @@ export class S3StorageAdapter {
 
   async getObjectTags(location: ObjectLocation): Promise<Record<string, string>> {
     try {
+      const physical = this.objectLocation(location.bucket, location.key);
       const result = await this.client.send(
         new GetObjectTaggingCommand({
-          Bucket: this.bucketName(location.bucket),
-          Key: location.key,
+          Bucket: physical.bucket,
+          Key: physical.key,
           ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
@@ -226,10 +238,11 @@ export class S3StorageAdapter {
 
   async deleteObject(location: ObjectLocation): Promise<void> {
     try {
+      const physical = this.objectLocation(location.bucket, location.key);
       await this.client.send(
         new DeleteObjectCommand({
-          Bucket: this.bucketName(location.bucket),
-          Key: location.key,
+          Bucket: physical.bucket,
+          Key: physical.key,
           ...(location.versionId ? { VersionId: location.versionId } : {}),
         }),
       );
@@ -244,13 +257,15 @@ export class S3StorageAdapter {
     options: CopyObjectOptions = {},
   ): Promise<void> {
     try {
-      const encodedKey = from.key.split('/').map(encodeURIComponent).join('/');
+      const source = this.objectLocation(from.bucket, from.key);
+      const destination = this.objectLocation(to.bucket, to.key);
+      const encodedKey = source.key.split('/').map(encodeURIComponent).join('/');
       const versionQuery = from.versionId ? `?versionId=${encodeURIComponent(from.versionId)}` : '';
       await this.client.send(
         new CopyObjectCommand({
-          Bucket: this.bucketName(to.bucket),
-          Key: to.key,
-          CopySource: `${this.bucketName(from.bucket)}/${encodedKey}${versionQuery}`,
+          Bucket: destination.bucket,
+          Key: destination.key,
+          CopySource: `${source.bucket}/${encodedKey}${versionQuery}`,
           ...(options.sourceEtag ? { CopySourceIfMatch: options.sourceEtag } : {}),
         }),
       );
@@ -262,12 +277,19 @@ export class S3StorageAdapter {
   async publicUrl(key: string, expiresInSeconds: number): Promise<string> {
     const config = loadConfig();
     if (config.cloudfront.enabled) {
-      return this.cloudFrontUrl(key, expiresInSeconds);
+      return this.cloudFrontUrl(this.objectLocation('public', key).key, expiresInSeconds);
     }
     // Without CloudFront, a public object is still served through a signed URL
     // rather than being made anonymously readable.
     return this.createDownloadUrl({ bucket: 'public', key, expiresInSeconds });
   }
+}
+
+/** Resolve a provider-neutral database key to its physical key in S3. */
+export function prefixObjectKey(prefix: string, key: string): string {
+  const cleanPrefix = prefix.replace(/^\/+|\/+$/g, '');
+  const cleanKey = key.replace(/^\/+/, '');
+  return cleanPrefix ? `${cleanPrefix}/${cleanKey}` : cleanKey;
 }
 
 function buildDisposition(filename: string): string {

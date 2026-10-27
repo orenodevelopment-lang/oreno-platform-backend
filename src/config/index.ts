@@ -25,6 +25,8 @@ export interface AppConfig {
     readonly url: string | undefined;
     readonly tls: boolean;
     readonly queuePrefix: string;
+    /** Run BullMQ consumers and schedules in the API process. */
+    readonly runWorkerInApi: boolean;
     /** True when Key Value is configured; queues and socket scaling require it. */
     readonly enabled: boolean;
   };
@@ -74,6 +76,13 @@ export interface AppConfig {
     readonly endpoint: string | undefined;
     readonly forcePathStyle: boolean;
     readonly buckets: {
+      readonly public: string;
+      readonly private: string;
+      readonly quarantine: string;
+      readonly exports: string;
+    };
+    /** Prefixes applied at the S3 boundary; database keys remain provider-neutral. */
+    readonly prefixes: {
       readonly public: string;
       readonly private: string;
       readonly quarantine: string;
@@ -155,6 +164,7 @@ function buildConfig(raw: RawEnv): AppConfig {
       url: raw.KEY_VALUE_URL,
       tls: raw.KEY_VALUE_TLS,
       queuePrefix: raw.QUEUE_PREFIX,
+      runWorkerInApi: raw.RUN_WORKER_IN_API,
       enabled: Boolean(raw.KEY_VALUE_URL),
     }),
 
@@ -217,10 +227,16 @@ function buildConfig(raw: RawEnv): AppConfig {
       endpoint: raw.S3_ENDPOINT,
       forcePathStyle: raw.S3_FORCE_PATH_STYLE,
       buckets: Object.freeze({
-        public: raw.S3_PUBLIC_BUCKET ?? 'oreno-public-local',
-        private: raw.S3_PRIVATE_BUCKET ?? 'oreno-private-local',
+        public: raw.S3_APPLICATION_BUCKET ?? raw.S3_PUBLIC_BUCKET ?? 'oreno-application-local',
+        private: raw.S3_APPLICATION_BUCKET ?? raw.S3_PRIVATE_BUCKET ?? 'oreno-application-local',
         quarantine: raw.S3_QUARANTINE_BUCKET ?? 'oreno-quarantine-local',
-        exports: raw.S3_EXPORT_BUCKET ?? 'oreno-exports-local',
+        exports: raw.S3_APPLICATION_BUCKET ?? raw.S3_EXPORT_BUCKET ?? 'oreno-application-local',
+      }),
+      prefixes: Object.freeze({
+        public: raw.S3_APPLICATION_BUCKET ? 'public' : '',
+        private: raw.S3_APPLICATION_BUCKET ? 'private' : '',
+        quarantine: '',
+        exports: raw.S3_APPLICATION_BUCKET ? 'exports' : '',
       }),
       presignedUploadTtlSeconds: raw.PRESIGNED_UPLOAD_TTL_SECONDS,
       presignedDownloadTtlSeconds: raw.PRESIGNED_DOWNLOAD_TTL_SECONDS,

@@ -89,6 +89,10 @@ export const sessionIdParamsSchema = z.object({ sessionId: z.string().uuid() });
 export const oauthStartQuerySchema = strictObject({
   /** Where to send the browser after the callback completes. */
   redirectTo: z.string().trim().max(2048).optional(),
+  /** Unknown identities are only allowed to create an account in talent-signup mode. */
+  mode: z.enum(['login', 'talent_signup']).default('login'),
+  /** Required when mode is talent_signup so consent is recorded at account creation. */
+  acceptTerms: z.enum(['true', 'false']).default('false'),
 });
 
 export const oauthCallbackQuerySchema = strictObject({

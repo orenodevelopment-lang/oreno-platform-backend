@@ -50,6 +50,7 @@ const schema = z
     KEY_VALUE_URL: optionalString,
     KEY_VALUE_TLS: booleanish.default(false),
     QUEUE_PREFIX: z.string().default('oreno'),
+    RUN_WORKER_IN_API: booleanish.default(false),
 
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
     SESSION_COOKIE_NAME: z.string().default('oreno_session'),
@@ -89,6 +90,9 @@ const schema = z
     AWS_REGION: z.string().default('eu-west-1'),
     AWS_ACCESS_KEY_ID: optionalString,
     AWS_SECRET_ACCESS_KEY: optionalString,
+    S3_APPLICATION_BUCKET: optionalString,
+    // Legacy four-bucket configuration. Accepted during migration, but new
+    // deployments should use S3_APPLICATION_BUCKET plus S3_QUARANTINE_BUCKET.
     S3_PUBLIC_BUCKET: optionalString,
     S3_PRIVATE_BUCKET: optionalString,
     S3_QUARANTINE_BUCKET: optionalString,
@@ -193,6 +197,14 @@ const schema = z
       });
     }
 
+    if (value.RUN_WORKER_IN_API && !value.KEY_VALUE_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['RUN_WORKER_IN_API'],
+        message: 'RUN_WORKER_IN_API requires KEY_VALUE_URL so the API can consume queues.',
+      });
+    }
+
     if (isProduction && value.EMAIL_PROVIDER === 'log') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -226,20 +238,36 @@ const schema = z
     }
 
     if (value.STORAGE_DRIVER === 's3') {
-      const required = [
-        'S3_PUBLIC_BUCKET',
-        'S3_PRIVATE_BUCKET',
-        'S3_QUARANTINE_BUCKET',
-        'S3_EXPORT_BUCKET',
-      ] as const;
-      for (const key of required) {
-        if (!value[key]) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [key],
-            message: `${key} is required when STORAGE_DRIVER=s3.`,
-          });
-        }
+      if (!value.S3_QUARANTINE_BUCKET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['S3_QUARANTINE_BUCKET'],
+          message: 'S3_QUARANTINE_BUCKET is required when STORAGE_DRIVER=s3.',
+        });
+      }
+
+      const legacyApplicationBuckets = [
+        value.S3_PUBLIC_BUCKET,
+        value.S3_PRIVATE_BUCKET,
+        value.S3_EXPORT_BUCKET,
+      ];
+      if (!value.S3_APPLICATION_BUCKET && legacyApplicationBuckets.some((bucket) => !bucket)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['S3_APPLICATION_BUCKET'],
+          message:
+            'S3_APPLICATION_BUCKET is required when STORAGE_DRIVER=s3. The legacy S3_PUBLIC_BUCKET, S3_PRIVATE_BUCKET and S3_EXPORT_BUCKET set is also accepted during migration.',
+        });
+      }
+      if (
+        value.S3_APPLICATION_BUCKET &&
+        value.S3_APPLICATION_BUCKET === value.S3_QUARANTINE_BUCKET
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['S3_QUARANTINE_BUCKET'],
+          message: 'S3_QUARANTINE_BUCKET must be separate from S3_APPLICATION_BUCKET.',
+        });
       }
       if (isProduction && (!value.AWS_ACCESS_KEY_ID || !value.AWS_SECRET_ACCESS_KEY)) {
         ctx.addIssue({

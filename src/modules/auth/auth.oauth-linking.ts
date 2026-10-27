@@ -29,9 +29,15 @@ export interface OAuthResolution {
   linked: boolean;
 }
 
+interface OAuthResolutionOptions {
+  mode: 'login' | 'talent_signup';
+  acceptedTerms: boolean;
+}
+
 export async function resolveOAuthUser(
   identity: OAuthIdentity,
   meta: RequestMeta,
+  options: OAuthResolutionOptions = { mode: 'login', acceptedTerms: false },
 ): Promise<OAuthResolution> {
   const prisma = getPrisma();
   const provider = identity.provider.toUpperCase() as IdentityProvider;
@@ -47,13 +53,6 @@ export async function resolveOAuthUser(
   });
 
   if (existingIdentity) {
-    await prisma.userIdentity.update({
-      where: {
-        provider_providerUserId: { provider, providerUserId: identity.providerUserId },
-      },
-      data: { lastUsedAt: new Date() },
-    });
-
     if (
       existingIdentity.user.status === 'SUSPENDED' ||
       existingIdentity.user.status === 'DEACTIVATED'
@@ -63,6 +62,21 @@ export async function resolveOAuthUser(
         'This account is not available. Contact support for help.',
       );
     }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.userIdentity.update({
+        where: {
+          provider_providerUserId: { provider, providerUserId: identity.providerUserId },
+        },
+        data: { lastUsedAt: new Date() },
+      });
+      if (existingIdentity.user.status === 'PENDING_VERIFICATION' && identity.emailVerified) {
+        await tx.user.update({
+          where: { id: existingIdentity.userId },
+          data: { emailVerifiedAt: new Date(), status: 'ACTIVE' },
+        });
+      }
+    });
 
     await repository.recordSecurityEvent({
       userId: existingIdentity.userId,
@@ -137,6 +151,26 @@ export async function resolveOAuthUser(
     return { userId: existingUser.id, created: false, linked: true };
   }
 
+  if (options.mode !== 'talent_signup') {
+    await repository.recordSecurityEvent({
+      type: 'OAUTH_LOGIN_FAILED',
+      ipAddress: meta.ipAddress,
+      userAgent: meta.userAgent,
+      detail: { provider, reason: 'account_not_found' },
+    });
+    throw new UnauthenticatedError(
+      ErrorCode.INVALID_CREDENTIALS,
+      'No Oreno account uses that provider identity. Create a talent account first.',
+    );
+  }
+
+  if (!options.acceptedTerms) {
+    throw new UnauthenticatedError(
+      ErrorCode.VALIDATION_FAILED,
+      'Accept the terms and privacy policy before creating a talent account.',
+    );
+  }
+
   const [firstName, ...rest] = (
     identity.displayName ??
     identity.email.split('@')[0] ??
@@ -164,6 +198,34 @@ export async function resolveOAuthUser(
         },
       },
       select: { id: true },
+    });
+
+    const profile = await tx.talentProfile.create({
+      data: {
+        userId: created.id,
+        visibility: 'PRIVATE',
+        status: 'DRAFT',
+      },
+      select: { id: true },
+    });
+
+    await tx.consentRecord.create({
+      data: {
+        userId: created.id,
+        email: identity.email!,
+        purpose: 'TERMS_AND_PRIVACY',
+        granted: true,
+        policyVersion: '2026-10-15',
+        ipAddress: meta.ipAddress?.slice(0, 64) ?? null,
+        userAgent: meta.userAgent?.slice(0, 512) ?? null,
+      },
+    });
+
+    await emitEvent(tx, {
+      eventKey: EVENT_KEYS.TALENT_PROFILE_CREATED,
+      aggregateType: 'TalentProfile',
+      aggregateId: profile.id,
+      payload: { talentProfileId: profile.id, userId: created.id },
     });
 
     await emitEvent(tx, {

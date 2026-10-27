@@ -48,6 +48,13 @@ describe('registration intent and idempotency', () => {
       }),
     ).toBe(1);
 
+    const pendingLogin = await request(app)
+      .post('/api/v1/auth/login')
+      .set('Origin', origin)
+      .send({ email, password: body.password })
+      .expect(401);
+    expect(pendingLogin.body.error.code).toBe('EMAIL_NOT_VERIFIED');
+
     const mismatch = await request(app)
       .post('/api/v1/auth/register')
       .set('Origin', origin)

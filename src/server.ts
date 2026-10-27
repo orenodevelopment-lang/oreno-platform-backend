@@ -10,14 +10,16 @@ import { connectKeyValue } from './database/key-value.js';
 import { connectPrisma } from './database/prisma.js';
 import { installShutdownHandlers } from './shutdown.js';
 import { installMessagingSocket } from './modules/messaging/messaging.socket.js';
+import { startWorkers } from './workers/index.js';
 
 /**
  * API entry point.
  *
  * Configuration is parsed before anything else so a misconfigured deployment
  * fails at startup with a readable error rather than on the first request.
- * The worker has its own entry point (`worker.ts`) that shares every module but
- * runs no HTTP listener — the two scale independently on Render.
+ * The worker normally has its own entry point (`worker.ts`) so it can scale
+ * independently. Small always-on deployments may instead enable the same
+ * workers in this process with `RUN_WORKER_IN_API=true`.
  */
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -44,6 +46,9 @@ async function main(): Promise<void> {
     );
   }
 
+  const embeddedWorkers = config.keyValue.runWorkerInApi ? await startWorkers() : undefined;
+  if (embeddedWorkers) log.info('embedded background workers ready');
+
   const stopMetrics = config.observability.metricsEnabled ? startMetricsReporter() : undefined;
 
   const app = createApp();
@@ -61,7 +66,12 @@ async function main(): Promise<void> {
   const shutdown = installShutdownHandlers({
     logger: log,
     server,
-    teardown: [() => messagingSocket.close(), () => stopMetrics?.(), flushErrorMonitor],
+    teardown: [
+      () => messagingSocket.close(),
+      () => embeddedWorkers?.stop(),
+      () => stopMetrics?.(),
+      flushErrorMonitor,
+    ],
   });
 
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

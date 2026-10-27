@@ -42,6 +42,7 @@ const userSchema = z.object({
   email: z.string().email(),
   emailVerifiedAt: z.string().datetime().nullable(),
   status: z.enum(['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+  registrationIntent: z.enum(['TALENT', 'COMPANY_OWNER']).nullable(),
   firstName: z.string(),
   lastName: z.string(),
   displayName: z.string().nullable(),
@@ -295,7 +296,7 @@ export const authOperations: OperationDoc[] = [
         status: 200,
         description: 'Authorization URL built.',
         envelope: true,
-        schema: z.object({ authorizationUrl: z.string().url(), state: z.string() }),
+        schema: z.object({ authorizationUrl: z.string().url() }),
       },
       {
         status: 404,
@@ -316,21 +317,14 @@ export const authOperations: OperationDoc[] = [
     operationId: 'authOAuthCallback',
     summary: 'Complete a federated sign-in',
     description:
-      'Exchanges the authorization code, resolves or creates the local account, and sets the session cookies. `redirectTo` echoes the validated post-login destination.',
+      'Exchanges the authorization code, resolves or creates the local account, sets the session cookies, and redirects the browser to the validated frontend callback URL.',
     tags: [TAG],
     security: PUBLIC,
     request: { params: providerParams, query: oauthCallbackQuerySchema },
     responses: [
       {
-        status: 200,
-        description: 'Signed in. Session and CSRF cookies are set on this response.',
-        envelope: true,
-        schema: z.object({
-          userId: z.string().uuid(),
-          created: z.boolean().describe('True when this callback created the local account.'),
-          linked: z.boolean().describe('True when the identity was linked to an existing account.'),
-          redirectTo: z.string().nullable(),
-        }),
+        status: 303,
+        description: 'Signed in. Session and CSRF cookies are set before redirecting to the frontend.',
       },
       {
         status: 422,

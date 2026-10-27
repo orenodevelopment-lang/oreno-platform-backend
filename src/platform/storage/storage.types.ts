@@ -1,7 +1,7 @@
 /**
  * Storage abstraction.
  *
- * Every bucket is private. A client never receives an S3 URL; it receives either
+ * All physical buckets are private. A client never receives an S3 URL; it receives either
  * a short-lived pre-signed URL (uploads and private downloads) or a CloudFront
  * URL (files that are deliberately publishable, such as a company logo).
  *
@@ -60,7 +60,7 @@ export interface CopyObjectOptions {
 
 export interface StorageAdapter {
   readonly name: string;
-  /** Whether downloads for the public bucket go through CloudFront. */
+  /** Whether downloads for the logical public area go through CloudFront. */
   readonly supportsPublicDelivery: boolean;
 
   createUploadUrl(input: CreateUploadUrlInput): Promise<PresignedUpload>;

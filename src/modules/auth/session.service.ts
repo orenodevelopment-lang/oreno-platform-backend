@@ -115,7 +115,7 @@ export async function resolveSession(rawToken: string): Promise<SessionResolutio
     return { outcome: 'idle_timeout' };
   }
 
-  if (session.user.status !== 'ACTIVE' && session.user.status !== 'PENDING_VERIFICATION') {
+  if (session.user.status !== 'ACTIVE') {
     return { outcome: 'account_unavailable' };
   }
 

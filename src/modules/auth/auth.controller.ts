@@ -322,7 +322,16 @@ export async function completeTwoFactorChallenge(req: Request, res: Response): P
 export async function startOAuth(req: Request, res: Response): Promise<void> {
   const provider = parseProvider(req.params.provider);
   const { query } = validate(req, { query: oauthStartQuerySchema });
-  const attempt = await oauth.buildSignedState(provider, query.redirectTo);
+  if (query.mode === 'talent_signup' && query.acceptTerms !== 'true') {
+    throw new UnprocessableError(
+      ErrorCode.VALIDATION_FAILED,
+      'Accept the terms and privacy policy before creating a talent account.',
+    );
+  }
+  const attempt = await oauth.buildSignedState(provider, query.redirectTo, {
+    mode: query.mode,
+    acceptedTerms: query.acceptTerms === 'true',
+  });
   const config = loadConfig();
   res.cookie(oauth.OAUTH_STATE_COOKIE, attempt.browserToken, {
     httpOnly: true,
@@ -357,7 +366,10 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
     path: '/api/v1/auth/oauth',
   });
   const identity = await oauth.exchangeCodeForIdentity(provider, query.code, state.codeVerifier);
-  const resolution = await resolveOAuthUser(identity, metaFrom(req));
+  const resolution = await resolveOAuthUser(identity, metaFrom(req), {
+    mode: state.mode,
+    acceptedTerms: state.acceptedTerms,
+  });
 
   const { createSession } = await import('./session.service.js');
   const requiresTwoFactor = await twoFactor.isTwoFactorEnabled(resolution.userId);
@@ -371,13 +383,11 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
   setSessionCookie(res, session.token);
   setCsrfCookie(res, session.csrfToken);
 
-  sendSuccess(res, {
-    userId: resolution.userId,
-    created: resolution.created,
-    linked: resolution.linked,
-    redirectTo: state.redirectTo ?? null,
-    nextStep: requiresTwoFactor ? 'TWO_FACTOR' : 'COMPLETE',
-  });
+  const destination = state.redirectTo ?? loadConfig().appUrl;
+  const redirect = new URL(destination);
+  if (requiresTwoFactor) redirect.searchParams.set('step', 'two-factor');
+  if (resolution.created) redirect.searchParams.set('created', 'true');
+  res.redirect(303, redirect.toString());
 }
 
 export async function unlinkOAuthProvider(req: Request, res: Response): Promise<void> {

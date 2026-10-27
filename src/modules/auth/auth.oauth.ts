@@ -26,6 +26,7 @@ const log = createModuleLogger('auth.oauth');
  * providers can assert different addresses for the same person.
  */
 export type OAuthProviderKey = 'google' | 'linkedin';
+export type OAuthFlowMode = 'login' | 'talent_signup';
 
 interface ProviderEndpoints {
   authorizeUrl: string;
@@ -92,6 +93,8 @@ interface StatePayload {
 interface OAuthAttemptMetadata {
   provider: OAuthProviderKey;
   redirectTo?: string;
+  mode: OAuthFlowMode;
+  acceptedTerms: boolean;
   codeVerifier: string;
   browserTokenHash: string;
 }
@@ -104,6 +107,8 @@ export interface OAuthAttempt {
 
 export interface ConsumedOAuthAttempt {
   redirectTo: string | undefined;
+  mode: OAuthFlowMode;
+  acceptedTerms: boolean;
   codeVerifier: string;
 }
 
@@ -121,6 +126,7 @@ function signState(payload: string): string {
 export async function buildSignedState(
   provider: OAuthProviderKey,
   redirectTo: string | undefined,
+  options: { mode?: OAuthFlowMode; acceptedTerms?: boolean } = {},
 ): Promise<OAuthAttempt> {
   const config = loadConfig();
   let safeRedirect: string | undefined;
@@ -129,7 +135,12 @@ export async function buildSignedState(
     const resolved = new URL(redirectTo, config.appUrl).toString();
     const allowed = config.auth.redirectAllowlist.some((entry) => {
       try {
-        return new URL(entry).toString() === resolved;
+        const allowedUrl = new URL(entry);
+        const resolvedUrl = new URL(resolved);
+        return (
+          allowedUrl.origin === resolvedUrl.origin &&
+          (allowedUrl.pathname === '/' || allowedUrl.toString() === resolvedUrl.toString())
+        );
       } catch {
         return false;
       }
@@ -155,6 +166,8 @@ export async function buildSignedState(
   const metadata: OAuthAttemptMetadata = {
     provider,
     ...(safeRedirect ? { redirectTo: safeRedirect } : {}),
+    mode: options.mode ?? 'login',
+    acceptedTerms: options.acceptedTerms ?? false,
     codeVerifier,
     browserTokenHash: hashToken(browserToken),
   };
@@ -259,7 +272,12 @@ export async function readSignedState(
     );
   }
 
-  return { redirectTo: metadata.redirectTo, codeVerifier: metadata.codeVerifier };
+  return {
+    redirectTo: metadata.redirectTo,
+    mode: metadata.mode === 'talent_signup' ? 'talent_signup' : 'login',
+    acceptedTerms: metadata.acceptedTerms === true,
+    codeVerifier: metadata.codeVerifier,
+  };
 }
 
 /* -------------------------------------------------------------------------- */
