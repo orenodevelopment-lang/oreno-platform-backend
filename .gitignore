@@ -5,6 +5,7 @@ coverage/
 .env.*
 !.env.example
 client_secret_*.apps.googleusercontent.com.json
+*_accessKeys.csv
 *.log
 logs/
 .DS_Store
