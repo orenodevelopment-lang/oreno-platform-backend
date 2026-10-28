@@ -28,19 +28,23 @@ describe('mandatory Oreno application screening', () => {
 
   it('hides a CV-backed application until separate human approval and release', async () => {
     const prisma = getPrisma();
-    const [owner, talent, admin, organisation, ownerRole] = await Promise.all([
-      createTestUser('screen-company-owner'), createTestUser('screen-talent'), createTestUser('screen-admin'),
-      createTestOrganisation('screen-company'), ensureOrganisationRole('COMPANY_OWNER'),
+    const [owner, outsider, talent, admin, organisation, otherOrganisation, ownerRole] = await Promise.all([
+      createTestUser('screen-company-owner'), createTestUser('screen-other-owner'), createTestUser('screen-talent'), createTestUser('screen-admin'),
+      createTestOrganisation('screen-company'), createTestOrganisation('screen-other-company'), ensureOrganisationRole('COMPANY_OWNER'),
     ]);
     await grantScreeningOwner(admin.id);
-    await prisma.organisationMembership.create({ data: { organisationId: organisation.id, userId: owner.id, roleId: ownerRole.id, status: 'ACTIVE', joinedAt: new Date() } });
+    await prisma.organisationMembership.createMany({ data: [
+      { organisationId: organisation.id, userId: owner.id, roleId: ownerRole.id, status: 'ACTIVE', joinedAt: new Date() },
+      { organisationId: otherOrganisation.id, userId: outsider.id, roleId: ownerRole.id, status: 'ACTIVE', joinedAt: new Date() },
+    ] });
     const profile = await prisma.talentProfile.create({ data: { userId: talent.id, status: 'ACTIVE', visibility: 'PUBLIC', headline: 'Screening test engineer' } });
     const job = await prisma.job.create({ data: { organisationId: organisation.id, reference: `ORJ-${suffix()}`, slug: `screening-${suffix()}`, title: 'Screened API Engineer', status: 'PUBLISHED', moderationStatus: 'APPROVED', employmentType: 'FULL_TIME', workArrangement: 'REMOTE', description: 'A vacancy that requires managed screening.', publishedAt: new Date(), requirements: { create: { kind: 'OTHER', label: 'Relevant API delivery', weight: 1, isMandatory: true, position: 0 } } } });
     const cv = await prisma.fileObject.create({ data: { ownerId: talent.id, category: 'CV', visibility: 'PRIVATE', status: 'READY', bucket: 'private', storageKey: `tests/cv-${suffix()}.pdf`, originalName: 'fictional-candidate-cv.pdf', mimeType: 'application/pdf', sizeBytes: 1024, scannedAt: new Date(), readyAt: new Date() } });
-    const [ownerSession, talentSession, adminSession] = await Promise.all([
-      createSession({ userId: owner.id, mfaSatisfied: true }), createSession({ userId: talent.id, mfaSatisfied: true }), createSession({ userId: admin.id, mfaSatisfied: true }),
+    const [ownerSession, outsiderSession, talentSession, adminSession] = await Promise.all([
+      createSession({ userId: owner.id, mfaSatisfied: true }), createSession({ userId: outsider.id, mfaSatisfied: true }), createSession({ userId: talent.id, mfaSatisfied: true }), createSession({ userId: admin.id, mfaSatisfied: true }),
     ]);
     const companyHeaders = { Authorization: `Bearer ${ownerSession.token}`, 'X-Organisation-Id': organisation.id };
+    const outsiderHeaders = { Authorization: `Bearer ${outsiderSession.token}`, 'X-Organisation-Id': otherOrganisation.id };
     const talentHeaders = { Authorization: `Bearer ${talentSession.token}` };
     const adminHeaders = { Authorization: `Bearer ${adminSession.token}` };
 
@@ -49,6 +53,7 @@ describe('mandatory Oreno application screening', () => {
     expect(application.talentProfileId).toBe(profile.id);
     expect(application.screening.status).toBe('PENDING_CV_REVIEW');
     await request(app).get(`/api/v1/organisations/${organisation.id}/applications/${application.id}`).set(companyHeaders).expect(404);
+    await request(app).post(`/api/v1/files/${cv.id}/download`).set(companyHeaders).send({}).expect(404);
     const hidden = await request(app).get(`/api/v1/organisations/${organisation.id}/applications`).set(companyHeaders).expect(200);
     expect(hidden.body.data.applications).toHaveLength(0);
 
@@ -70,6 +75,8 @@ describe('mandatory Oreno application screening', () => {
 
     const visible = await request(app).get(`/api/v1/organisations/${organisation.id}/applications/${application.id}`).set(companyHeaders).expect(200);
     expect(visible.body.data.application.screening).toMatchObject({ employerSummary: 'Oreno reviewed the submitted CV and completed a human role interview.' });
+    await request(app).get(`/api/v1/organisations/${otherOrganisation.id}/applications/${application.id}`).set(outsiderHeaders).expect(404);
+    await request(app).post(`/api/v1/files/${cv.id}/download`).set(outsiderHeaders).send({}).expect(404);
     expect(await prisma.shortlistCandidate.count({ where: { applicationId: application.id } })).toBe(1);
   });
 });

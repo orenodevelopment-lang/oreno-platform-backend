@@ -17,6 +17,7 @@ Updated 2026-10-28. This report describes local verification only; no production
 | Frontend `npm run lint` | Passed |
 | Frontend `npm test` | Passed: 22 tests |
 | Frontend `npm run build` | Passed; all static and dynamic application routes compiled |
+| Frontend `npx playwright test --list` | Passed: 10 browser tests in 5 files, including the three-candidate managed-screening journey |
 | Screening HTTP journey | Added, but not executed locally because the configured PostgreSQL service was unavailable |
 | Disposable migration rehearsal | Blocked because local Docker Desktop/PostgreSQL was unavailable; no remote or production database was used |
 
@@ -34,4 +35,4 @@ Updated 2026-10-28. This report describes local verification only; no production
 
 Live S3/GuardDuty, Resend, OAuth, monitoring, and production-domain cookie behavior remain staging smoke tests. The frontend uploader uses the existing presigned upload and scan-status APIs; it does not bypass quarantine. Browser E2E needs seeded fixture accounts, a disposable database, Redis, and deterministic local storage/email adapters. These external checks must not be reported as passing until those services are configured and exercised.
 
-The database-backed HTTP test covers the successful Candidate C path, including pre-release company invisibility, human CV review, internal interview, final approval, explicit release, safe company projection, idempotent replay, and a single curated shortlist entry. Candidate A/B browser journeys, cross-tenant negative browser checks, live file-link expiry, and the full released interview-to-placement journey still require the disposable environment described above.
+The database-backed HTTP test covers the successful Candidate C path, including pre-release company invisibility, human CV review, internal interview, final approval, explicit release, safe company projection, idempotent replay, and a single curated shortlist entry. The compiled Playwright suite covers Candidate A stopping at CV review, Candidate B stopping after the internal interview, Candidate C remaining invisible through final approval and then completing release, employer interview, offer, acceptance, and placement. Live execution, cross-tenant browser checks, and provider-backed file-link expiry still require the disposable/staging environment described above.
