@@ -91,6 +91,19 @@ const RESOURCES: readonly ResourceSpec[] = [
     },
   },
   {
+    resource: 'screening',
+    actions: {
+      read: 'View job-specific recruitment screening cases and submitted CVs',
+      assign: 'Assign or reassign a recruitment screening reviewer',
+      cv_review: 'Record a human CV screening decision',
+      interview_manage: 'Schedule, reschedule and cancel Oreno screening interviews',
+      interview_decide: 'Record an Oreno screening interview outcome',
+      final_decide: 'Record a final human job-screening decision',
+      release: 'Release an approved application to the correct employer',
+      audit_read: 'View recruitment screening decision history',
+    },
+  },
+  {
     resource: 'job',
     actions: {
       read: 'View jobs',

@@ -14,10 +14,10 @@ import { ErrorCode } from '../errors/error-codes.js';
  * else is rejected without an `Access-Control-Allow-Origin` header, which
  * makes the browser block the response.
  */
-export function corsMiddleware() {
+export function createCorsOptions(): CorsOptions {
   const config = loadConfig();
 
-  const options: CorsOptions = {
+  return {
     origin(origin, callback) {
       // Same-origin, server-to-server and non-browser callers send no Origin.
       if (!origin) {
@@ -42,6 +42,7 @@ export function corsMiddleware() {
       'Authorization',
       'X-Correlation-Id',
       'X-Request-Id',
+      'X-Organisation-Id',
       'Idempotency-Key',
       config.session.csrfHeaderName,
     ],
@@ -56,8 +57,10 @@ export function corsMiddleware() {
     ],
     maxAge: 86_400,
   };
+}
 
-  return cors(options);
+export function corsMiddleware() {
+  return cors(createCorsOptions());
 }
 
 export function securityHeadersMiddleware() {

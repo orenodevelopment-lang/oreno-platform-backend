@@ -471,11 +471,30 @@ async function authorisedFile(auth: AuthContext, fileId: string) {
   if (!file || file.status === 'DELETED')
     throw new NotFoundError(ErrorCode.FILE_NOT_FOUND, 'That file was not found.');
   const owner = file.ownerId === auth.userId;
-  const org =
-    file.organisationId &&
-    file.organisationId === auth.organisationId &&
-    auth.membershipStatus === 'ACTIVE' &&
-    auth.organisationPermissions.has('file:read');
+  const applicationAttachment = await getPrisma().applicationAttachment.findFirst({
+    where: { fileId },
+    select: {
+      application: {
+        select: {
+          id: true,
+          organisationId: true,
+          screening: { select: { status: true, releasedToCompanyAt: true } },
+        },
+      },
+    },
+  });
+  const org = applicationAttachment
+    ? applicationAttachment.application.organisationId === auth.organisationId &&
+      applicationAttachment.application.screening?.status === 'RELEASED_TO_COMPANY' &&
+      Boolean(applicationAttachment.application.screening.releasedToCompanyAt) &&
+      auth.membershipStatus === 'ACTIVE' &&
+      auth.organisationPermissions.has('file:read')
+    : Boolean(
+        file.organisationId &&
+        file.organisationId === auth.organisationId &&
+        auth.membershipStatus === 'ACTIVE' &&
+        auth.organisationPermissions.has('file:read'),
+      );
   const grant = await getPrisma().fileAccessGrant.count({
     where: { fileId, grantedToId: auth.userId, revokedAt: null, expiresAt: { gt: new Date() } },
   });
@@ -515,7 +534,9 @@ async function authorisedFile(auth: AuthContext, fileId: string) {
     !grant &&
     !conversationAccess &&
     !taskAccess &&
-    !auth.platformPermissions.has('file:read')
+    !(applicationAttachment
+      ? auth.platformPermissions.has('screening:read')
+      : auth.platformPermissions.has('file:read'))
   )
     throw new NotFoundError(ErrorCode.FILE_NOT_FOUND, 'That file was not found.');
   return file;

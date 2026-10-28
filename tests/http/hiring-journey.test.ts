@@ -39,6 +39,21 @@ describe('company-to-candidate hiring API journey', () => {
         availabilityStatus: 'AVAILABLE_NOW',
       },
     });
+    const cv = await prisma.fileObject.create({
+      data: {
+        ownerId: talent.id,
+        category: 'CV',
+        visibility: 'PRIVATE',
+        status: 'READY',
+        bucket: 'private',
+        storageKey: `tests/hiring-journey-${randomUUID()}.pdf`,
+        originalName: 'hiring-journey-cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        scannedAt: new Date(),
+        readyAt: new Date(),
+      },
+    });
     const [ownerSession, talentSession] = await Promise.all([
       createSession({ userId: owner.id, mfaSatisfied: true }),
       createSession({ userId: talent.id, mfaSatisfied: true }),
@@ -90,11 +105,23 @@ describe('company-to-candidate hiring API journey', () => {
       .send({
         coverLetter: 'I have built and operated multi-tenant TypeScript services.',
         answers: [],
-        attachments: [],
+        attachments: [{ fileId: cv.id, kind: 'CV', label: cv.originalName }],
       })
       .expect(201);
     let application = applicationResponse.body.data.application;
     expect(application.talentProfileId).toBe(profile.id);
+
+    await prisma.applicationScreening.update({
+      where: { applicationId: application.id },
+      data: {
+        status: 'RELEASED_TO_COMPANY',
+        finalDecision: 'APPROVED',
+        finalDecidedAt: new Date(),
+        approvedAt: new Date(),
+        releasedToCompanyAt: new Date(),
+        employerSummary: 'Legacy hiring journey fixture explicitly classified as released.',
+      },
+    });
 
     for (const status of ['UNDER_REVIEW', 'SHORTLISTED'] as const) {
       const transition = await request(app)

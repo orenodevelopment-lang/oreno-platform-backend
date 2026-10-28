@@ -16,7 +16,7 @@ export async function organisationDashboard(auth: AuthContext, organisationId: s
     prisma.staffAssignment.count({ where: { organisationId } }),
     prisma.staffAssignment.count({ where: { organisationId, status: 'ACTIVE' } }),
     prisma.job.count({ where: { organisationId, status: 'PUBLISHED' } }),
-    prisma.application.groupBy({ by: ['status'], where: { organisationId, ...(createdAt ? { submittedAt: createdAt } : {}) }, _count: { _all: true }, orderBy: { status: 'asc' } }),
+    prisma.application.groupBy({ by: ['status'], where: { organisationId, screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } }, ...(createdAt ? { submittedAt: createdAt } : {}) }, _count: { _all: true }, orderBy: { status: 'asc' } }),
     prisma.task.count({ where: { organisationId, status: { in: ['TO_DO', 'IN_PROGRESS', 'IN_REVIEW'] } } }),
     prisma.timeEntry.aggregate({ where: { organisationId, status: 'SUBMITTED', ...(createdAt ? { workDate: createdAt } : {}) }, _sum: { ordinaryMinutes: true, overtimeMinutes: true }, _count: { _all: true } }),
     prisma.timeEntry.aggregate({ where: { organisationId, status: 'APPROVED', ...(createdAt ? { workDate: createdAt } : {}) }, _sum: { ordinaryMinutes: true, overtimeMinutes: true }, _count: { _all: true } }),

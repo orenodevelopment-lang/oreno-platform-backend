@@ -2,7 +2,9 @@
 
 ## Implemented scope
 
-The backend now mounts the full planned modular surface for authentication and 2FA, accounts, organisations and invitations, public/company talent discovery, jobs and applications, matching and shortlists, vetting, interviews/offers/placements/replacements, workforce structure, tasks/calendar/time/performance, files, messaging and authenticated Socket.IO, notifications and transactional email, compensation/payroll/payment records, reporting/CSV exports, public leads/newsletter, support, search, and platform administration.
+The backend now mounts the full planned modular surface for authentication and 2FA, accounts, organisations and invitations, public/company talent discovery, jobs and applications, mandatory job-specific Oreno recruitment screening, matching and shortlists, vetting, interviews/offers/placements/replacements, workforce structure, tasks/calendar/time/performance, files, messaging and authenticated Socket.IO, notifications and transactional email, compensation/payroll/payment records, reporting/CSV exports, public leads/newsletter, support, search, and platform administration.
+
+Recruitment screening uses a separate per-application aggregate and internal interview record. Companies cannot access the application, CV, answers, employer actions, tenant exports, or indirect application-derived discovery until an authorized Oreno administrator records human CV/interview/final decisions and performs the distinct idempotent release. See `docs/recruitment-screening/` for the state graph, migration policy, API/UI matrix, and test report.
 
 Sensitive commands use tenant checks, scoped manager policies, state transitions, optimistic timestamps, idempotency where repeat execution is harmful, immutable history, and audit/outbox records. Offer acceptance reuses the existing user and talent profile and creates the placement, assignment, and pay agreement in one transaction. Oreno records compensation and external payment outcomes; it does not transfer funds.
 

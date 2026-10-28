@@ -13,7 +13,7 @@ Updated 2026-10-17. Legend: **[x]** implemented and locally validated, **[~]** i
 | RBAC and tenant/manager boundaries | [x] | Central catalogue, tenant policies, unit boundary tests |
 | Audit, idempotency, outbox recovery | [x] | Append-only database guards; stale claim recovery and stable queue IDs |
 | Queue/email outcome tracking | [x] | Encrypted durable email intents, identifier-only queue/event payloads, deduplicated delivery and unique queue/job outcomes |
-| OpenAPI | [~] | 298 operations; controller mutation/filter schemas, UUID paths, idempotency headers and core hiring responses; non-core response envelopes remain generic |
+| OpenAPI | [~] | 319 operations; controller mutation/filter schemas, UUID paths, idempotency headers and core hiring responses; non-core response envelopes remain generic |
 | Documentation | [x] | `README.md`, `DEPLOYMENT.md`, `HANDOFF.md`, `.env.example` |
 
 ## Product modules
@@ -23,7 +23,7 @@ Updated 2026-10-17. Legend: **[x]** implemented and locally validated, **[~]** i
 | Users/accounts | [x] | profile, preferences, avatar, sessions/activity, account deactivation |
 | Organisations/members/invitations | [x] | settings, addresses, resumable onboarding, roles, lifecycle, resend/accept |
 | Talent and discovery | [x] | profile/repeatable records, availability, visibility, skills, public/company projections |
-| Jobs/applications | [x] | company CRUD/state history, public discovery, application submit/withdraw/status |
+| Jobs/applications | [x] | company CRUD/state history, public discovery, CV-backed application submit, managed Oreno screening, explicit employer release, withdraw/status |
 | Matching/shortlists | [x] | deterministic versioned explanations, recompute, notes/candidate lifecycle |
 | Vetting | [x] | talent submissions and platform-owned review/decision surface |
 | Interviews/offers | [x] | schedules/outcomes, immutable offer history, send/respond/expire |

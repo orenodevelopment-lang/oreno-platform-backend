@@ -345,7 +345,7 @@ function discoveryWhere(auth: AuthContext | undefined, query: DiscoveryQuery): P
   const visible: Prisma.TalentProfileWhereInput[] = [{ visibility: 'PUBLIC' }];
   if (company) visible.push({ visibility: 'ORENO_COMPANIES_ONLY' });
   if (organisationId) {
-    visible.push({ applications: { some: { organisationId } } }, { offers: { some: { organisationId } } }, { placements: { some: { organisationId } } }, { staffAssignments: { some: { organisationId } } });
+    visible.push({ applications: { some: { organisationId, screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } } } } }, { offers: { some: { organisationId } } }, { placements: { some: { organisationId } } }, { staffAssignments: { some: { organisationId } } });
   }
   const skillIds = typeof query.skillIds === 'string' ? [query.skillIds] : query.skillIds;
   return {

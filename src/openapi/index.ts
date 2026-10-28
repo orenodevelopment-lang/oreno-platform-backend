@@ -30,7 +30,7 @@ export const API_TAGS = [
     name: 'users',
     description: 'User directory and profile reads. Mounted at `/api/v1/users`.',
   },
-  ...['public','organisations','invitations','talents','jobs','applications','hiring','workforce','performance','matching','placements','compensation','exports','reporting','files','notifications','messaging','support','search','admin'].map((name) => ({ name, description: `${name[0]!.toUpperCase()}${name.slice(1)} API operations.` })),
+  ...['public','organisations','invitations','talents','jobs','applications','hiring','screening','workforce','performance','matching','placements','compensation','exports','reporting','files','notifications','messaging','support','search','admin'].map((name) => ({ name, description: `${name[0]!.toUpperCase()}${name.slice(1)} API operations.` })),
 ];
 
 export function operationDefinitions(): OperationDoc[] {

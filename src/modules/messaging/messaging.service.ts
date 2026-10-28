@@ -77,7 +77,7 @@ async function canMessageUser(senderId: string, targetId: string): Promise<boole
     const organisations = senderOrganisations.map((row) => row.organisationId);
     if (
       await prisma.application.count({
-        where: { talentProfileId: targetTalent.id, organisationId: { in: organisations } },
+        where: { talentProfileId: targetTalent.id, organisationId: { in: organisations }, screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } } },
       })
     ) {
       return true;
@@ -87,7 +87,7 @@ async function canMessageUser(senderId: string, targetId: string): Promise<boole
     const organisations = targetOrganisations.map((row) => row.organisationId);
     if (
       await prisma.application.count({
-        where: { talentProfileId: senderTalent.id, organisationId: { in: organisations } },
+        where: { talentProfileId: senderTalent.id, organisationId: { in: organisations }, screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } } },
       })
     ) {
       return true;

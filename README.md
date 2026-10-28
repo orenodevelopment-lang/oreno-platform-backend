@@ -73,7 +73,7 @@ npm run openapi:generate
 npm run openapi:check
 ```
 
-All 303 mounted operations are inventoried. Mutation bodies and query filters use the same Zod schemas as their controllers, idempotent commands document `Idempotency-Key`, and response envelopes identify their concrete top-level resources. Delete and leave operations document their 204 responses.
+All 319 mounted operations are inventoried. Mutation bodies and query filters use the same Zod schemas as their controllers, idempotent commands document `Idempotency-Key`, and response envelopes identify their concrete top-level resources. Delete and leave operations document their 204 responses. Managed application screening is documented in [docs/recruitment-screening/IMPLEMENTATION_MATRIX.md](docs/recruitment-screening/IMPLEMENTATION_MATRIX.md); staging migration and release steps are in [docs/recruitment-screening/OPERATOR_RUNBOOK.md](docs/recruitment-screening/OPERATOR_RUNBOOK.md).
 
 Frontend TypeScript clients can be generated with any OpenAPI 3.1-compatible generator. One example is:
 

@@ -5,6 +5,7 @@ import { getPrisma } from '../../database/prisma.js';
 import { EVENT_KEYS } from '../../platform/events/event-catalog.js';
 import { emitEvent } from '../../platform/outbox/outbox.service.js';
 import type { AuthContext } from '../auth/index.js';
+import { releasedToOrganisationWhere } from '../application-screening/screening.policy.js';
 import {
   assertOrganisationAccess,
   assertOrganisationMutation,
@@ -356,7 +357,13 @@ export async function listMatches(
 const SHORTLIST_INCLUDE = {
   job: { select: { id: true, title: true, reference: true } },
   candidates: {
-    where: { removedAt: null },
+    where: {
+      removedAt: null,
+      OR: [
+        { applicationId: null },
+        { application: { screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } } } },
+      ],
+    },
     orderBy: [{ position: 'asc' as const }, { createdAt: 'asc' as const }],
     include: {
       talentProfile: {
@@ -496,7 +503,7 @@ async function validateCandidateRelationship(
     const application = await getPrisma().application.findFirst({
       where: {
         id: applicationId,
-        organisationId,
+        ...releasedToOrganisationWhere(organisationId),
         talentProfileId,
         ...(shortlistJobId ? { jobId: shortlistJobId } : {}),
       },
@@ -512,7 +519,7 @@ async function validateCandidateRelationship(
       status: 'ACTIVE',
       OR: [
         { visibility: { in: ['PUBLIC', 'ORENO_COMPANIES_ONLY'] } },
-        { applications: { some: { organisationId } } },
+        { applications: { some: releasedToOrganisationWhere(organisationId) } },
         { offers: { some: { organisationId } } },
         { placements: { some: { organisationId } } },
       ],

@@ -19,6 +19,7 @@ import * as talents from '../modules/talents/talent.schema.js';
 import * as vetting from '../modules/vetting/vetting.schema.js';
 import * as work from '../modules/work/work.schema.js';
 import * as workforce from '../modules/workforce/workforce.schema.js';
+import * as screening from '../modules/application-screening/application-screening.schema.js';
 import type { HttpMethod, OperationDoc } from './openapi.types.js';
 
 interface Group { prefix: string; tag: string; routes: string[]; public?: boolean }
@@ -37,6 +38,7 @@ const groups: Group[] = [
     'POST /certifications','PATCH /certifications/{itemId}','DELETE /certifications/{itemId}','POST /portfolio','PATCH /portfolio/{itemId}','DELETE /portfolio/{itemId}',
     'POST /skills','PATCH /skills/{itemId}','DELETE /skills/{itemId}',
     'GET /applications','POST /applications/{applicationId}/withdraw','GET /workforce/assignments','GET /interviews','GET /offers','POST /offers/{offerId}/respond',
+    'GET /applications/{applicationId}/screening','POST /applications/{applicationId}/screening/information','GET /screening-interviews',
     'GET /tasks','GET /tasks/{taskId}','POST /tasks/{taskId}/status','POST /tasks/{taskId}/comments','POST /tasks/{taskId}/attachments',
     'GET /time-entries','POST /time-entries','PATCH /time-entries/{timeEntryId}','POST /time-entries/{timeEntryId}/submit','GET /calendar','POST /calendar/{eventId}/respond',
     'GET /performance-reviews','GET /performance-reviews/{reviewId}','POST /performance-reviews/{reviewId}/self-assessment','POST /performance-reviews/{reviewId}/respond',
@@ -89,6 +91,12 @@ const groups: Group[] = [
     'GET /dashboard','GET /users','GET /users/{id}','POST /users/{id}/status','POST /users/{id}/sessions/revoke','GET /organisations','GET /organisations/{id}','POST /organisations/{id}/status','POST /organisations/{id}/verification','GET /applications','GET /placements','GET /compensation/payroll','GET /compensation/payments','GET /jobs','POST /jobs/{id}/moderation','GET /roles','POST /roles/grant','POST /roles/revoke','GET /leads/{kind}','PATCH /leads/{kind}/{id}','GET /audit','GET /configuration','PUT /configuration/feature-flags','PUT /configuration/policies','GET /announcements','POST /announcements','GET /deliveries','POST /deliveries/{id}/retry','GET /operations','POST /operations/jobs/{id}/retry',
   ] },
   { prefix: '/api/v1/admin/vetting', tag: 'admin', routes: ['GET /','GET /{caseId}','POST /{caseId}/assign','POST /{caseId}/assessments','POST /{caseId}/review'] },
+  { prefix: '/api/v1/admin/screening', tag: 'screening', routes: [
+    'GET /applications','GET /applications/{applicationId}','POST /applications/{applicationId}/cv/download','GET /applications/{applicationId}/history',
+    'POST /applications/{applicationId}/assign','POST /applications/{applicationId}/cv-review','POST /applications/{applicationId}/request-info','POST /applications/{applicationId}/interviews',
+    'PATCH /interviews/{interviewId}','POST /interviews/{interviewId}/cancel','POST /interviews/{interviewId}/outcome',
+    'POST /applications/{applicationId}/final-decision','POST /applications/{applicationId}/release',
+  ] },
   { prefix: '/api/v1/admin/replacements', tag: 'admin', routes: ['GET /','POST /{replacementId}/decision','POST /{replacementId}/candidates'] },
   { prefix: '/api/v1/admin/exports', tag: 'admin', routes: ['GET /','POST /','GET /{exportId}','GET /{exportId}/download'] },
   { prefix: '/api/v1/admin/support', tag: 'admin', routes: ['GET /','GET /{caseId}','PATCH /{caseId}','POST /{caseId}/notes'] },
@@ -129,6 +137,7 @@ const requestBodies = new Map<string, ZodTypeAny | null>([
   ['patch /api/v1/talents/me/skills/{itemId}', talents.updateTalentSkillSchema],
   ['delete /api/v1/talents/me/skills/{itemId}', null],
   ['post /api/v1/talents/me/applications/{applicationId}/withdraw', jobs.withdrawApplicationSchema],
+  ['post /api/v1/talents/me/applications/{applicationId}/screening/information', screening.submitInformationSchema],
   ['post /api/v1/talents/me/offers/{offerId}/respond', pipeline.offerResponseSchema],
   ['post /api/v1/talents/me/tasks/{taskId}/status', work.taskStatusSchema],
   ['post /api/v1/talents/me/tasks/{taskId}/comments', work.commentSchema],
@@ -262,6 +271,16 @@ const requestBodies = new Map<string, ZodTypeAny | null>([
   ['post /api/v1/admin/vetting/{caseId}/assign', vetting.assignVettingSchema],
   ['post /api/v1/admin/vetting/{caseId}/assessments', vetting.assessmentSchema],
   ['post /api/v1/admin/vetting/{caseId}/review', vetting.reviewVettingSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/cv/download', null],
+  ['post /api/v1/admin/screening/applications/{applicationId}/assign', screening.assignScreeningSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/cv-review', screening.cvReviewSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/request-info', screening.requestInformationSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/interviews', screening.scheduleScreeningInterviewSchema],
+  ['patch /api/v1/admin/screening/interviews/{interviewId}', screening.updateScreeningInterviewSchema],
+  ['post /api/v1/admin/screening/interviews/{interviewId}/cancel', screening.requestInformationSchema.pick({ expectedUpdatedAt: true, reason: true })],
+  ['post /api/v1/admin/screening/interviews/{interviewId}/outcome', screening.screeningInterviewOutcomeSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/final-decision', screening.finalScreeningDecisionSchema],
+  ['post /api/v1/admin/screening/applications/{applicationId}/release', screening.releaseScreeningSchema],
   ['post /api/v1/admin/replacements/{replacementId}/decision', placements.replacementDecisionSchema],
   ['post /api/v1/admin/replacements/{replacementId}/candidates', placements.proposeCandidatesSchema],
   ['post /api/v1/admin/exports', exportSchemas.createExportSchema],
@@ -277,6 +296,7 @@ const requestQueries = new Map<string, ZodTypeAny>([
   ['get /api/v1/talents', talents.discoveryQuerySchema],
   ['get /api/v1/public/talents', talents.discoveryQuerySchema],
   ['get /api/v1/talents/me/applications', jobs.myApplicationsQuerySchema],
+  ['get /api/v1/talents/me/screening-interviews', screening.screeningQueueQuerySchema.pick({ page: true, pageSize: true })],
   ['get /api/v1/talents/me/interviews', pipeline.interviewListQuerySchema.pick({ page: true, pageSize: true })],
   ['get /api/v1/talents/me/offers', pipeline.offerListQuerySchema],
   ['get /api/v1/talents/me/tasks', work.taskListQuerySchema],
@@ -323,6 +343,7 @@ const requestQueries = new Map<string, ZodTypeAny>([
   ['get /api/v1/admin/announcements', admin.announcementListQuery],
   ['get /api/v1/admin/deliveries', admin.deliveryListQuery],
   ['get /api/v1/admin/vetting', vetting.vettingListQuerySchema],
+  ['get /api/v1/admin/screening/applications', screening.screeningQueueQuerySchema],
   ['get /api/v1/admin/replacements', placements.replacementListQuerySchema],
   ['get /api/v1/admin/exports', exportSchemas.exportListQuerySchema],
   ['get /api/v1/admin/support', support.listSchema],
@@ -341,6 +362,7 @@ const idempotentOperations = new Set([
   'post /api/v1/conversations/{conversationId}/messages',
   'post /api/v1/admin/replacements/{replacementId}/decision',
   'post /api/v1/admin/exports',
+  'post /api/v1/admin/screening/applications/{applicationId}/release',
 ]);
 
 const entitySchema = z.object({ id: z.string().uuid() }).passthrough();
@@ -393,6 +415,9 @@ const responseSchemas = new Map<string, ZodTypeAny>([
   ['post /api/v1/public/jobs/{jobId}/applications', z.object({ application: applicationSchema })],
   ['get /api/v1/talents/me/applications', z.object({ applications: z.array(applicationSchema) })],
   ['post /api/v1/talents/me/applications/{applicationId}/withdraw', z.object({ application: applicationSchema })],
+  ['get /api/v1/talents/me/applications/{applicationId}/screening', resource('screening')],
+  ['post /api/v1/talents/me/applications/{applicationId}/screening/information', resource('screening')],
+  ['get /api/v1/talents/me/screening-interviews', collection('interviews')],
   ['get /api/v1/talents/me/offers', z.object({ offers: z.array(offerSchema) })],
   ['post /api/v1/talents/me/offers/{offerId}/respond', z.object({ offer: offerSchema, placement: placementSchema.nullable(), staffAssignment: staffAssignmentSchema.nullable() })],
   ['get /api/v1/talents/me/placements', z.object({ placements: z.array(placementSchema) })],
@@ -599,6 +624,14 @@ const responseSchemas = new Map<string, ZodTypeAny>([
   ['post /api/v1/admin/vetting/{caseId}/assign', resource('case')],
   ['post /api/v1/admin/vetting/{caseId}/assessments', resource('assessment')],
   ['post /api/v1/admin/vetting/{caseId}/review', resource('case')],
+  ['get /api/v1/admin/screening/applications', z.object({ items: z.array(resourceSchema), counts: z.record(z.number()) })],
+  ['get /api/v1/admin/screening/applications/{applicationId}', resource('screening')],
+  ['post /api/v1/admin/screening/applications/{applicationId}/cv/download', downloadSchema],
+  ['get /api/v1/admin/screening/applications/{applicationId}/history', collection('history')],
+  ...['assign','cv-review','request-info','interviews','final-decision','release'].map((action) => [`post /api/v1/admin/screening/applications/{applicationId}/${action}`, resource('screening')] as [string, ZodTypeAny]),
+  ['patch /api/v1/admin/screening/interviews/{interviewId}', resource('interview')],
+  ['post /api/v1/admin/screening/interviews/{interviewId}/cancel', resource('interview')],
+  ['post /api/v1/admin/screening/interviews/{interviewId}/outcome', resource('screening')],
   ['get /api/v1/admin/replacements', collection('replacements')],
   ['post /api/v1/admin/replacements/{replacementId}/decision', resource('replacement')],
   ['post /api/v1/admin/replacements/{replacementId}/candidates', collection('candidates')],

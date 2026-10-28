@@ -117,7 +117,11 @@ export const createApplicationSchema = strictObject({
   expectedRateUnit: z.enum(['HOURLY', 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']).nullable().optional(),
   availableFrom: z.coerce.date().nullable().optional(),
   answers: z.array(answerSchema).max(50).default([]),
-  attachments: z.array(attachmentSchema).max(20).default([]),
+  attachments: z.array(attachmentSchema).min(1).max(20),
+}).superRefine((value, context) => {
+  if (!value.attachments.some((attachment) => attachment.kind === 'CV')) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['attachments'], message: 'A ready CV is required.' });
+  }
 });
 export const myApplicationsQuerySchema = pagePaginationSchema.extend({
   status: z.enum(['SUBMITTED', 'UNDER_REVIEW', 'SHORTLISTED', 'INTERVIEWING', 'OFFER_PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN']).optional(),

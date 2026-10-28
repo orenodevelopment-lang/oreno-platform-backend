@@ -15,6 +15,7 @@ import { createPublicRouter } from '../modules/public/index.js';
 import { createAdminSupportRouter, createSupportRouter } from '../modules/support/index.js';
 import { createAdminRouter } from '../modules/admin/index.js';
 import { createSearchRouter } from '../modules/search/index.js';
+import { createAdminScreeningRouter, createTalentScreeningRouter } from '../modules/application-screening/index.js';
 
 /**
  * The versioned API surface.
@@ -30,6 +31,7 @@ export function createApiRouter(): Router {
   router.use('/users', createUserRouter());
   router.use('/organisations', createOrganisationRouter());
   router.use('/talents', createTalentRouter());
+  router.use('/talents/me', createTalentScreeningRouter());
   router.use('/jobs', createPublicJobRouter());
   router.use('/public', createPublicRouter());
   router.use('/public/jobs', createPublicJobRouter());
@@ -38,6 +40,7 @@ export function createApiRouter(): Router {
   router.use('/storage/local', createLocalStorageRouter());
   router.use('/notifications', createNotificationRouter());
   router.use('/admin/vetting', createAdminVettingRouter());
+  router.use('/admin/screening', createAdminScreeningRouter());
   router.use('/admin/replacements', createAdminReplacementRouter());
   router.use('/admin/exports', createAdminExportRouter());
   router.use('/admin', createAdminReportingRouter());

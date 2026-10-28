@@ -36,7 +36,7 @@ export const PLATFORM_ONLY_PERMISSIONS: ReadonlySet<string> = new Set([
   'config:manage',
 ]);
 
-const PLATFORM_ONLY_PREFIXES: readonly string[] = ['admin:', 'ops:'];
+const PLATFORM_ONLY_PREFIXES: readonly string[] = ['admin:', 'ops:', 'screening:'];
 
 export function isPlatformOnlyPermission(key: string): boolean {
   if (PLATFORM_ONLY_PERMISSIONS.has(key)) return true;
@@ -292,6 +292,13 @@ const TALENT_REVIEWER_PERMISSIONS: readonly string[] = [
   'vetting:review',
   'vetting:decide',
   'vetting:assign_reviewer',
+  'screening:read',
+  'screening:assign',
+  'screening:cv_review',
+  'screening:interview_manage',
+  'screening:interview_decide',
+  'screening:final_decide',
+  'screening:audit_read',
   'skill:read',
   'skill:create',
   'skill:update',
@@ -324,6 +331,12 @@ const OPERATIONS_ADMIN_PERMISSIONS: readonly string[] = [
   'job:read',
   'job:moderate',
   'application:read',
+  'screening:read',
+  'screening:assign',
+  'screening:interview_manage',
+  'screening:final_decide',
+  'screening:release',
+  'screening:audit_read',
   'support:read',
   'support:update',
   'lead:read',
@@ -342,15 +355,16 @@ const OPERATIONS_ADMIN_PERMISSIONS: readonly string[] = [
 /** Read-only analyst: every read permission, nothing that mutates. */
 const READ_ONLY_ANALYST_PERMISSIONS: readonly string[] = ALL_PERMISSION_KEYS.filter(
   (key) =>
-    key.endsWith(':read') ||
-    key.endsWith(':read_public') ||
-    key.endsWith(':read_self') ||
-    key.endsWith(':read_notes') ||
-    key.endsWith(':read_compensation') ||
-    key.endsWith(':read_explanation') ||
-    key.endsWith(':read_sensitive') ||
-    key.endsWith(':read_organisation_total') ||
-    key.endsWith(':read_own_organisation'),
+    !key.startsWith('screening:') &&
+    (key.endsWith(':read') ||
+      key.endsWith(':read_public') ||
+      key.endsWith(':read_self') ||
+      key.endsWith(':read_notes') ||
+      key.endsWith(':read_compensation') ||
+      key.endsWith(':read_explanation') ||
+      key.endsWith(':read_sensitive') ||
+      key.endsWith(':read_organisation_total') ||
+      key.endsWith(':read_own_organisation')),
 );
 
 export interface RoleDefinition {

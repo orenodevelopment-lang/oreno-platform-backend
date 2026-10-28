@@ -3,6 +3,7 @@ import type { ApplicationStatus, JobStatus, Prisma } from '@prisma/client';
 import { getPrisma } from '../../database/prisma.js';
 import { ConflictError, NotFoundError, UnprocessableError } from '../../common/errors/app-error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
+import { getContext } from '../../common/logging/context.js';
 import { recordAudit } from '../../platform/audit/audit.service.js';
 import { EVENT_KEYS } from '../../platform/events/event-catalog.js';
 import { emitEvent } from '../../platform/outbox/outbox.service.js';
@@ -15,12 +16,13 @@ import type {
   PublicJobQuery,
   UpdateJobInput,
 } from './job.schema.js';
+import { releasedToOrganisationWhere } from '../application-screening/screening.policy.js';
 
 const COMPANY_JOB_INCLUDE = {
   organisation: { select: { id: true, name: true, slug: true, logoFileId: true } },
   requirements: { include: { skill: { select: { id: true, key: true, name: true } } }, orderBy: { position: 'asc' as const } },
   statusHistory: { orderBy: { createdAt: 'asc' as const } },
-  _count: { select: { applications: true, placements: true } },
+  _count: { select: { applications: { where: { screening: { is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } } } } }, placements: true } },
 } satisfies Prisma.JobInclude;
 
 function assertRate(input: {
@@ -229,10 +231,13 @@ export async function submitApplication(auth: AuthContext, jobId: string, input:
   if (job.applicationDeadline && job.applicationDeadline <= new Date()) throw new UnprocessableError(ErrorCode.JOB_DEADLINE_PASSED, 'The application deadline has passed.');
   if (!profile || profile.status !== 'ACTIVE') throw new UnprocessableError(ErrorCode.TALENT_PROFILE_INCOMPLETE, 'Complete your talent profile before applying.');
   const files = input.attachments.map((item) => item.fileId);
-  if (files.length) {
-    const count = await prisma.fileObject.count({ where: { id: { in: files }, ownerId: auth.userId, status: 'READY' } });
-    if (count !== new Set(files).size) throw new NotFoundError(ErrorCode.FILE_NOT_READY, 'One or more attachments are not ready.');
-  }
+  const uniqueFiles = [...new Set(files)];
+  if (uniqueFiles.length !== files.length) throw new UnprocessableError(ErrorCode.VALIDATION_FAILED, 'Each attachment may only be submitted once.');
+  const storedFiles = await prisma.fileObject.findMany({ where: { id: { in: uniqueFiles }, ownerId: auth.userId, status: 'READY', visibility: 'PRIVATE' }, select: { id: true, category: true, originalName: true } });
+  if (storedFiles.length !== uniqueFiles.length) throw new NotFoundError(ErrorCode.FILE_NOT_READY, 'One or more attachments are not ready.');
+  const cvAttachment = input.attachments.find((item) => item.kind === 'CV');
+  const cvFile = cvAttachment && storedFiles.find((file) => file.id === cvAttachment.fileId && file.category === 'CV');
+  if (!cvFile) throw new UnprocessableError(ErrorCode.SCREENING_CV_REQUIRED, 'Attach a clean, ready CV before applying.');
   const { answers, attachments, ...applicationData } = input;
   try {
     return await prisma.$transaction(async (tx) => {
@@ -245,10 +250,18 @@ export async function submitApplication(auth: AuthContext, jobId: string, input:
           statusHistory: { create: { toStatus: 'SUBMITTED', changedById: auth.userId } },
           answers: { create: answers },
           attachments: { create: attachments },
+          screening: {
+            create: {
+              currentCvFileId: cvFile.id,
+              history: { create: { toStatus: 'PENDING_CV_REVIEW', action: 'SUBMITTED', actorId: auth.userId, requestId: getContext()?.requestId ?? null } },
+            },
+          },
         },
-        include: { job: { select: { id: true, title: true, reference: true, organisation: { select: { id: true, name: true } } } }, answers: true, attachments: true, statusHistory: true },
+        include: { job: { select: { id: true, title: true, reference: true, organisation: { select: { id: true, name: true } } } }, answers: true, attachments: true, statusHistory: true, screening: true },
       });
+      await tx.fileUsage.createMany({ data: attachments.map((attachment) => ({ fileId: attachment.fileId, resourceType: 'Application', resourceId: application.id, field: attachment.kind })), skipDuplicates: true });
       await emitEvent(tx, { eventKey: EVENT_KEYS.APPLICATION_SUBMITTED, aggregateType: 'Application', aggregateId: application.id, organisationId: job.organisationId, payload: { applicationId: application.id, jobId, talentProfileId: profile.id, organisationId: job.organisationId } });
+      await emitEvent(tx, { eventKey: EVENT_KEYS.SCREENING_SUBMITTED, aggregateType: 'ApplicationScreening', aggregateId: application.screening!.id, organisationId: job.organisationId, payload: { applicationId: application.id, screeningId: application.screening!.id, talentProfileId: profile.id } });
       return application;
     });
   } catch (error) {
@@ -263,7 +276,7 @@ export async function listMyApplications(auth: AuthContext, query: { page: numbe
   const where: Prisma.ApplicationWhereInput = { talentProfileId: profile.id, ...(query.status ? { status: query.status } : {}) };
   const prisma = getPrisma();
   const [items, total] = await Promise.all([
-    prisma.application.findMany({ where, include: { job: { select: { id: true, title: true, reference: true, status: true, organisation: { select: { id: true, name: true, slug: true } } } }, statusHistory: { orderBy: { createdAt: 'asc' } } }, orderBy: { submittedAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
+    prisma.application.findMany({ where, include: { job: { select: { id: true, title: true, reference: true, status: true, organisation: { select: { id: true, name: true, slug: true } } } }, statusHistory: { orderBy: { createdAt: 'asc' } }, screening: { select: { status: true, candidateMessage: true, failureReason: true, approvedAt: true, releasedToCompanyAt: true, updatedAt: true } } }, orderBy: { submittedAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
     prisma.application.count({ where }),
   ]);
   return { items, total };
@@ -279,6 +292,12 @@ export async function withdrawApplication(auth: AuthContext, applicationId: stri
     const changed = await tx.application.updateMany({ where: { id: applicationId, talentProfileId: profile.id, updatedAt: expectedUpdatedAt }, data: { status: 'WITHDRAWN', withdrawnAt: new Date() } });
     if (!changed.count) throw new ConflictError(ErrorCode.STALE_WRITE, 'The application changed. Refresh and try again.');
     await tx.applicationStatusHistory.create({ data: { applicationId, fromStatus: current.status, toStatus: 'WITHDRAWN', changedById: auth.userId, reason } });
+    const screening = await tx.applicationScreening.findUnique({ where: { applicationId } });
+    if (screening && !['WITHDRAWN', 'CANCELLED'].includes(screening.status)) {
+      await tx.applicationScreening.update({ where: { id: screening.id }, data: { status: 'WITHDRAWN', withdrawnAt: new Date(), version: { increment: 1 } } });
+      await tx.screeningStatusHistory.create({ data: { screeningId: screening.id, actorId: auth.userId, fromStatus: screening.status, toStatus: 'WITHDRAWN', action: 'WITHDRAWN', reason, requestId: getContext()?.requestId ?? null } });
+      await tx.screeningInterview.updateMany({ where: { screeningId: screening.id, status: { in: ['SCHEDULED', 'RESCHEDULED'] } }, data: { status: 'CANCELLED', cancelledAt: new Date(), cancelReason: 'Application withdrawn by applicant.' } });
+    }
     await emitEvent(tx, { eventKey: EVENT_KEYS.APPLICATION_WITHDRAWN, aggregateType: 'Application', aggregateId: applicationId, organisationId: current.organisationId, payload: { applicationId, jobId: current.jobId, talentProfileId: profile.id, organisationId: current.organisationId } });
     return tx.application.findUniqueOrThrow({ where: { id: applicationId }, include: { statusHistory: { orderBy: { createdAt: 'asc' } } } });
   });
@@ -286,10 +305,10 @@ export async function withdrawApplication(auth: AuthContext, applicationId: stri
 
 export async function listOrganisationApplications(auth: AuthContext, organisationId: string, query: { page: number; pageSize: number; status?: ApplicationStatus; jobId?: string }) {
   assertOrganisationAccess(auth, organisationId, 'application:read');
-  const where: Prisma.ApplicationWhereInput = { organisationId, ...(query.status ? { status: query.status } : {}), ...(query.jobId ? { jobId: query.jobId } : {}) };
+  const where: Prisma.ApplicationWhereInput = { ...releasedToOrganisationWhere(organisationId), ...(query.status ? { status: query.status } : {}), ...(query.jobId ? { jobId: query.jobId } : {}) };
   const prisma = getPrisma();
   const [items, total] = await Promise.all([
-    prisma.application.findMany({ where, select: { id: true, status: true, source: true, submittedAt: true, reviewedAt: true, decidedAt: true, updatedAt: true, expectedRateAmount: true, expectedRateCurrency: true, expectedRateUnit: true, availableFrom: true, job: { select: { id: true, title: true, reference: true } }, talentProfile: { select: { id: true, headline: true, yearsExperience: true, availabilityStatus: true, user: { select: { firstName: true, lastName: true, displayName: true, avatarFileId: true } }, skills: { select: { proficiency: true, skill: { select: { id: true, name: true, key: true } } } } } } }, orderBy: { submittedAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
+    prisma.application.findMany({ where, select: { id: true, status: true, source: true, submittedAt: true, reviewedAt: true, decidedAt: true, updatedAt: true, expectedRateAmount: true, expectedRateCurrency: true, expectedRateUnit: true, availableFrom: true, job: { select: { id: true, title: true, reference: true } }, screening: { select: { releasedToCompanyAt: true, employerSummary: true } }, talentProfile: { select: { id: true, headline: true, yearsExperience: true, availabilityStatus: true, user: { select: { firstName: true, lastName: true, displayName: true, avatarFileId: true } }, skills: { select: { proficiency: true, skill: { select: { id: true, name: true, key: true } } } } } } }, orderBy: { submittedAt: 'desc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
     prisma.application.count({ where }),
   ]);
   return { items: items.map((item) => ({ ...item, expectedRateAmount: item.expectedRateAmount?.toString() ?? null })), total };
@@ -298,12 +317,13 @@ export async function listOrganisationApplications(auth: AuthContext, organisati
 export async function getOrganisationApplication(auth: AuthContext, organisationId: string, applicationId: string) {
   assertOrganisationAccess(auth, organisationId, 'application:read');
   const item = await getPrisma().application.findFirst({
-    where: { id: applicationId, organisationId },
+    where: { id: applicationId, ...releasedToOrganisationWhere(organisationId) },
     include: {
       job: { select: { id: true, title: true, reference: true } },
       answers: true,
       attachments: true,
       statusHistory: { orderBy: { createdAt: 'asc' } },
+      screening: { select: { releasedToCompanyAt: true, employerSummary: true } },
       talentProfile: {
         select: {
           id: true,
@@ -357,7 +377,7 @@ const APPLICATION_TRANSITIONS: Record<ApplicationStatus, readonly ApplicationSta
 export async function updateApplicationStatus(auth: AuthContext, organisationId: string, applicationId: string, toStatus: ApplicationStatus, expectedUpdatedAt: Date, reason?: string) {
   assertOrganisationMutation(auth, organisationId, 'application:update_status');
   return getPrisma().$transaction(async (tx) => {
-    const current = await tx.application.findFirst({ where: { id: applicationId, organisationId } });
+    const current = await tx.application.findFirst({ where: { id: applicationId, ...releasedToOrganisationWhere(organisationId) } });
     if (!current) throw new NotFoundError(ErrorCode.APPLICATION_NOT_FOUND, 'That application was not found.');
     if (!APPLICATION_TRANSITIONS[current.status].includes(toStatus)) throw new UnprocessableError(ErrorCode.APPLICATION_INVALID_TRANSITION, `An application in ${current.status} cannot move to ${toStatus}.`);
     const now = new Date();

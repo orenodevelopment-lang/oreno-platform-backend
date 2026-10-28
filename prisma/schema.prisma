@@ -136,6 +136,13 @@ model User {
   consentRecords     ConsentRecord[]
   fileObjects        FileObject[]        @relation("FileOwner")
   passwordHistory    PasswordHistory[]
+  screeningsAssigned      ApplicationScreening[]        @relation("ScreeningAssignee")
+  screeningsDecided       ApplicationScreening[]        @relation("ScreeningDecider")
+  screeningsReleased      ApplicationScreening[]        @relation("ScreeningReleaser")
+  screeningCvReviews      ScreeningCvReview[]           @relation("ScreeningCvReviewer")
+  screeningInterviews     ScreeningInterview[]          @relation("ScreeningInterviewer")
+  screeningHistory        ScreeningStatusHistory[]      @relation("ScreeningHistoryActor")
+  screeningInfoRequests   ScreeningInformationRequest[] @relation("ScreeningInfoRequester")
 
   @@index([status, createdAt])
   @@index([isPlatformAdmin])
@@ -1163,6 +1170,48 @@ enum ShortlistKind {
   ORENO_CURATED
 }
 
+enum ApplicationScreeningStatus {
+  PENDING_CV_REVIEW
+  CV_REVIEW_IN_PROGRESS
+  ADDITIONAL_INFO_REQUIRED
+  CV_APPROVED
+  INTERVIEW_SCHEDULED
+  INTERVIEW_COMPLETED
+  FINAL_REVIEW_PENDING
+  APPROVED_FOR_SUBMISSION
+  RELEASED_TO_COMPANY
+  NOT_SELECTED
+  WITHDRAWN
+  CANCELLED
+}
+
+enum ScreeningCvDecision {
+  APPROVED
+  NOT_SELECTED
+  REQUEST_INFORMATION
+}
+
+enum ScreeningInterviewStatus {
+  SCHEDULED
+  RESCHEDULED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ScreeningInterviewOutcome {
+  PASSED
+  FAILED
+  ON_HOLD
+  NEEDS_FOLLOWUP
+}
+
+enum ScreeningFinalDecision {
+  APPROVED
+  NOT_SELECTED
+  ON_HOLD
+}
+
 model Application {
   id              String            @id @default(uuid()) @db.Uuid
   organisationId  String            @map("organisation_id") @db.Uuid
@@ -1192,6 +1241,7 @@ model Application {
   interviews    Interview[]
   offers        Offer[]
   shortlistEntries ShortlistCandidate[]
+  screening        ApplicationScreening?
 
   /// One application per candidate per job — enforced in the database.
   @@unique([jobId, talentProfileId])
@@ -1199,6 +1249,132 @@ model Application {
   @@index([talentProfileId, status])
   @@index([jobId, status])
   @@map("applications")
+}
+
+model ApplicationScreening {
+  id                  String                     @id @default(uuid()) @db.Uuid
+  applicationId       String                     @unique @map("application_id") @db.Uuid
+  status              ApplicationScreeningStatus @default(PENDING_CV_REVIEW)
+  version             Int                        @default(1)
+  assignedReviewerId  String?                    @map("assigned_reviewer_id") @db.Uuid
+  dueAt               DateTime?                  @map("due_at") @db.Timestamptz(3)
+  currentCvFileId     String                     @map("current_cv_file_id") @db.Uuid
+  finalDecision       ScreeningFinalDecision?    @map("final_decision")
+  finalDecidedById    String?                    @map("final_decided_by_id") @db.Uuid
+  finalDecidedAt      DateTime?                  @map("final_decided_at") @db.Timestamptz(3)
+  candidateMessage    String?                    @map("candidate_message") @db.VarChar(2000)
+  employerSummary     String?                    @map("employer_summary") @db.VarChar(4000)
+  approvedAt          DateTime?                  @map("approved_at") @db.Timestamptz(3)
+  releasedToCompanyAt DateTime?                  @map("released_to_company_at") @db.Timestamptz(3)
+  releasedById        String?                    @map("released_by_id") @db.Uuid
+  failureReason       String?                    @map("failure_reason") @db.VarChar(2000)
+  withdrawnAt         DateTime?                  @map("withdrawn_at") @db.Timestamptz(3)
+  cancelledAt         DateTime?                  @map("cancelled_at") @db.Timestamptz(3)
+  createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  application         Application                   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  assignedReviewer    User?                         @relation("ScreeningAssignee", fields: [assignedReviewerId], references: [id], onDelete: SetNull)
+  finalDecidedBy      User?                         @relation("ScreeningDecider", fields: [finalDecidedById], references: [id], onDelete: SetNull)
+  releasedBy          User?                         @relation("ScreeningReleaser", fields: [releasedById], references: [id], onDelete: SetNull)
+  cvReviews           ScreeningCvReview[]
+  interviews          ScreeningInterview[]
+  history             ScreeningStatusHistory[]
+  informationRequests ScreeningInformationRequest[]
+
+  @@index([status, dueAt, createdAt])
+  @@index([assignedReviewerId, status])
+  @@index([releasedToCompanyAt])
+  @@map("application_screenings")
+}
+
+model ScreeningCvReview {
+  id                       String              @id @default(uuid()) @db.Uuid
+  screeningId              String              @map("screening_id") @db.Uuid
+  reviewerId               String              @map("reviewer_id") @db.Uuid
+  fileId                   String              @map("file_id") @db.Uuid
+  decision                 ScreeningCvDecision
+  rubric                   Json
+  privateNotes             String?             @map("private_notes") @db.VarChar(8000)
+  candidateVisibleFeedback String?             @map("candidate_visible_feedback") @db.VarChar(2000)
+  employerSafeSummary      String?             @map("employer_safe_summary") @db.VarChar(4000)
+  createdAt                DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  screening ApplicationScreening @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  reviewer  User                 @relation("ScreeningCvReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  file      FileObject           @relation("ScreeningCvFile", fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([screeningId, createdAt])
+  @@index([fileId])
+  @@map("screening_cv_reviews")
+}
+
+model ScreeningInterview {
+  id                       String                     @id @default(uuid()) @db.Uuid
+  screeningId              String                     @map("screening_id") @db.Uuid
+  interviewerId            String                     @map("interviewer_id") @db.Uuid
+  mode                     InterviewMode              @default(VIDEO)
+  status                   ScreeningInterviewStatus   @default(SCHEDULED)
+  scheduledStartAt         DateTime                   @map("scheduled_start_at") @db.Timestamptz(3)
+  scheduledEndAt           DateTime                   @map("scheduled_end_at") @db.Timestamptz(3)
+  timeZone                 String                     @default("UTC") @map("time_zone") @db.VarChar(64)
+  meetingUrl               String?                    @map("meeting_url") @db.VarChar(2048)
+  location                 String?                    @db.VarChar(300)
+  rescheduleReason         String?                    @map("reschedule_reason") @db.VarChar(1000)
+  cancelledAt              DateTime?                  @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason             String?                    @map("cancel_reason") @db.VarChar(1000)
+  completedAt              DateTime?                  @map("completed_at") @db.Timestamptz(3)
+  outcome                  ScreeningInterviewOutcome?
+  rubric                   Json?
+  privateNotes             String?                    @map("private_notes") @db.VarChar(8000)
+  candidateVisibleFeedback String?                    @map("candidate_visible_feedback") @db.VarChar(2000)
+  recordedById             String?                    @map("recorded_by_id") @db.Uuid
+  recordedAt               DateTime?                  @map("recorded_at") @db.Timestamptz(3)
+  attempt                  Int                        @default(1)
+  createdAt                DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  screening   ApplicationScreening @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  interviewer User                 @relation("ScreeningInterviewer", fields: [interviewerId], references: [id], onDelete: Restrict)
+
+  @@index([screeningId, scheduledStartAt])
+  @@index([interviewerId, status, scheduledStartAt])
+  @@map("screening_interviews")
+}
+
+model ScreeningStatusHistory {
+  id          String                      @id @default(uuid()) @db.Uuid
+  screeningId String                      @map("screening_id") @db.Uuid
+  actorId     String?                     @map("actor_id") @db.Uuid
+  fromStatus  ApplicationScreeningStatus? @map("from_status")
+  toStatus    ApplicationScreeningStatus  @map("to_status")
+  action      String                      @db.VarChar(80)
+  reason      String?                     @db.VarChar(2000)
+  requestId   String?                     @map("request_id") @db.VarChar(100)
+  createdAt   DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  screening ApplicationScreening @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  actor     User?                @relation("ScreeningHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([screeningId, createdAt])
+  @@map("screening_status_history")
+}
+
+model ScreeningInformationRequest {
+  id             String    @id @default(uuid()) @db.Uuid
+  screeningId    String    @map("screening_id") @db.Uuid
+  requestedById  String    @map("requested_by_id") @db.Uuid
+  message        String    @db.VarChar(2000)
+  responseText   String?   @map("response_text") @db.VarChar(4000)
+  responseFileId String?   @map("response_file_id") @db.Uuid
+  respondedAt    DateTime? @map("responded_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  screening   ApplicationScreening @relation(fields: [screeningId], references: [id], onDelete: Cascade)
+  requestedBy User                 @relation("ScreeningInfoRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([screeningId, createdAt])
+  @@map("screening_information_requests")
 }
 
 model ApplicationAnswer {
@@ -2835,6 +3011,7 @@ model FileObject {
   grants       FileAccessGrant[]
   scanResults  FileScanResult[]
   usages       FileUsage[]
+  screeningCvReviews ScreeningCvReview[] @relation("ScreeningCvFile")
 
   @@index([organisationId, category, status])
   @@index([ownerId, category])

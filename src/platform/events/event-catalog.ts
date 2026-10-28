@@ -50,6 +50,17 @@ export const EVENT_KEYS = {
   APPLICATION_SUBMITTED: 'application.submitted',
   APPLICATION_STATUS_CHANGED: 'application.status_changed',
   APPLICATION_WITHDRAWN: 'application.withdrawn',
+  SCREENING_SUBMITTED: 'screening.submitted',
+  SCREENING_ASSIGNED: 'screening.assigned',
+  SCREENING_CV_REVIEWED: 'screening.cv_reviewed',
+  SCREENING_INFO_REQUESTED: 'screening.info_requested',
+  SCREENING_INFO_SUBMITTED: 'screening.info_submitted',
+  SCREENING_INTERVIEW_SCHEDULED: 'screening.interview_scheduled',
+  SCREENING_INTERVIEW_UPDATED: 'screening.interview_updated',
+  SCREENING_INTERVIEW_DECIDED: 'screening.interview_decided',
+  SCREENING_FINAL_DECIDED: 'screening.final_decided',
+  SCREENING_RELEASED_TO_COMPANY: 'screening.released_to_company',
+  SCREENING_CANCELLED: 'screening.cancelled',
 
   // Pipeline
   SHORTLIST_CREATED: 'shortlist.created',
