@@ -95,10 +95,116 @@ export const oauthStartQuerySchema = strictObject({
   acceptTerms: z.enum(['true', 'false']).default('false'),
 });
 
-export const oauthCallbackQuerySchema = strictObject({
-  code: z.string().min(1).max(2048),
-  state: z.string().min(1).max(2048),
+const oauthCallbackScalarSchema = z.string().trim().min(1).max(2048);
+
+const oauthProviderCallbackFields = {
+  iss: z.string().trim().min(1).max(512).optional(),
+  scope: z.string().trim().max(2048).optional(),
+  authuser: z.string().trim().max(64).optional(),
+  prompt: z.string().trim().max(128).optional(),
+  hd: z.string().trim().max(253).optional(),
+};
+
+const forbiddenOAuthCallbackKeys = new Set([
+  'access_token',
+  'id_token',
+  'token',
+  'session_token',
+  'client_id',
+  'client_secret',
+  'code_verifier',
+  'code_challenge',
+  'redirect_uri',
+]);
+
+function rejectSensitiveOAuthCallbackKeys(
+  query: Record<string, unknown>,
+  ctx: z.RefinementCtx,
+): void {
+  for (const key of Object.keys(query)) {
+    if (!forbiddenOAuthCallbackKeys.has(key)) continue;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [key],
+      message: 'This parameter is not accepted on an OAuth callback.',
+    });
+  }
+}
+
+const oauthSuccessCallbackSchema = z
+  .object({
+    code: oauthCallbackScalarSchema,
+    state: oauthCallbackScalarSchema,
+    error: z.never().optional(),
+    error_description: z.never().optional(),
+    error_uri: z.never().optional(),
+    ...oauthProviderCallbackFields,
+  })
+  .passthrough()
+  .superRefine(rejectSensitiveOAuthCallbackKeys)
+  .transform(({ code, state, iss, scope, authuser, prompt, hd }) => ({
+    kind: 'success' as const,
+    code,
+    state,
+    iss,
+    scope,
+    authuser,
+    prompt,
+    hd,
+  }));
+
+const oauthErrorCallbackSchema = z
+  .object({
+    code: z.never().optional(),
+    state: oauthCallbackScalarSchema,
+    error: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9._-]+$/),
+    error_description: z.string().trim().max(2048).optional(),
+    error_uri: z.string().trim().url().max(2048).optional(),
+    ...oauthProviderCallbackFields,
+  })
+  .passthrough()
+  .superRefine(rejectSensitiveOAuthCallbackKeys)
+  .transform(({ state, error, iss, scope, authuser, prompt, hd }) => ({
+    kind: 'error' as const,
+    state,
+    error,
+    iss,
+    scope,
+    authuser,
+    prompt,
+    hd,
+  }));
+
+/**
+ * Provider callbacks may include documented or harmless provider-specific
+ * parameters. They are accepted for interoperability, then stripped so only
+ * the fields used by the callback flow reach the controller.
+ */
+export const oauthCallbackQuerySchema = z.union([
+  oauthSuccessCallbackSchema,
+  oauthErrorCallbackSchema,
+]);
+
+/** Flat representation used to document the success-or-error query union. */
+export const oauthCallbackOpenApiQuerySchema = z.object({
+  code: oauthCallbackScalarSchema.optional(),
+  state: oauthCallbackScalarSchema,
+  error: z.string().trim().min(1).max(128).optional(),
+  error_description: z.string().trim().max(2048).optional(),
+  error_uri: z.string().trim().url().max(2048).optional(),
+  ...oauthProviderCallbackFields,
 });
+
+/** Parse only the state before classifying the rest of the callback. */
+export const oauthCallbackStateSchema = z
+  .object({ state: oauthCallbackScalarSchema })
+  .passthrough()
+  .transform(({ state }) => state);
 
 export const updateProfileSchema = strictObject({
   firstName: personNameSchema.optional(),

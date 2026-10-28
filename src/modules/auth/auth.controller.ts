@@ -1,6 +1,11 @@
 import type { Request, Response } from 'express';
 import { sendSuccess, sendNoContent } from '../../common/http/response.js';
-import { ConflictError, NotFoundError, UnprocessableError } from '../../common/errors/app-error.js';
+import {
+  ConflictError,
+  NotFoundError,
+  UnprocessableError,
+  isAppError,
+} from '../../common/errors/app-error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { validate } from '../../common/validation/validate.js';
 import {
@@ -29,6 +34,7 @@ import {
   forgotPasswordSchema,
   loginSchema,
   oauthCallbackQuerySchema,
+  oauthCallbackStateSchema,
   oauthStartQuerySchema,
   registerSchema,
   resendVerificationSchema,
@@ -351,42 +357,107 @@ export async function startOAuth(req: Request, res: Response): Promise<void> {
 
 export async function handleOAuthCallback(req: Request, res: Response): Promise<void> {
   const provider = parseProvider(req.params.provider);
-  const { query } = validate(req, { query: oauthCallbackQuerySchema });
-
   const cookies = (req.cookies ?? {}) as Record<string, unknown>;
   const browserToken =
     typeof cookies[oauth.OAUTH_STATE_COOKIE] === 'string'
       ? cookies[oauth.OAUTH_STATE_COOKIE]
       : undefined;
-  const state = await oauth.readSignedState(query.state, provider, browserToken);
+
   res.clearCookie(oauth.OAUTH_STATE_COOKIE, {
     httpOnly: true,
     secure: loadConfig().isProduction,
     sameSite: loadConfig().isProduction ? 'none' : 'lax',
     path: '/api/v1/auth/oauth',
   });
-  const identity = await oauth.exchangeCodeForIdentity(provider, query.code, state.codeVerifier);
-  const resolution = await resolveOAuthUser(identity, metaFrom(req), {
-    mode: state.mode,
-    acceptedTerms: state.acceptedTerms,
-  });
 
-  const { createSession } = await import('./session.service.js');
-  const requiresTwoFactor = await twoFactor.isTwoFactorEnabled(resolution.userId);
-  const session = await createSession({
-    userId: resolution.userId,
-    userAgent: req.get('user-agent') ?? undefined,
-    ipAddress: req.ip,
-    mfaSatisfied: !requiresTwoFactor,
-  });
+  const callbackState = oauthCallbackStateSchema.safeParse(req.query);
+  if (!callbackState.success) {
+    oauth.logOAuthCallbackFailure(provider, 'invalid_state');
+    redirectOAuthFailure(res, provider, undefined, 'invalid_state');
+    return;
+  }
 
-  setSessionCookie(res, session.token);
-  setCsrfCookie(res, session.csrfToken);
+  let state: oauth.ConsumedOAuthAttempt;
+  try {
+    state = await oauth.readSignedState(callbackState.data, provider, browserToken);
+  } catch (error) {
+    if (isAppError(error) && error.code === ErrorCode.OAUTH_STATE_INVALID) {
+      oauth.logOAuthCallbackFailure(provider, 'invalid_state');
+      redirectOAuthFailure(res, provider, undefined, 'invalid_state');
+      return;
+    }
+    throw error;
+  }
 
-  const destination = state.redirectTo ?? loadConfig().appUrl;
-  const redirect = new URL(destination);
-  if (requiresTwoFactor) redirect.searchParams.set('step', 'two-factor');
-  if (resolution.created) redirect.searchParams.set('created', 'true');
+  const callback = oauthCallbackQuerySchema.safeParse(req.query);
+  if (!callback.success) {
+    oauth.logOAuthCallbackFailure(provider, 'invalid_response');
+    redirectOAuthFailure(res, provider, state.redirectTo, 'invalid_response');
+    return;
+  }
+  const query = callback.data;
+
+  if (!oauth.isExpectedCallbackIssuer(provider, query.iss)) {
+    oauth.logOAuthCallbackFailure(provider, 'invalid_issuer');
+    redirectOAuthFailure(res, provider, state.redirectTo, 'invalid_issuer');
+    return;
+  }
+
+  if (query.kind === 'error') {
+    oauth.logOAuthCallbackFailure(provider, 'provider_error', query.error);
+    redirectOAuthFailure(res, provider, state.redirectTo, 'provider_error');
+    return;
+  }
+
+  try {
+    const identity = await oauth.exchangeCodeForIdentity(provider, query.code, state.codeVerifier);
+    const resolution = await resolveOAuthUser(identity, metaFrom(req), {
+      mode: state.mode,
+      acceptedTerms: state.acceptedTerms,
+    });
+
+    const { createSession } = await import('./session.service.js');
+    const requiresTwoFactor = await twoFactor.isTwoFactorEnabled(resolution.userId);
+    const session = await createSession({
+      userId: resolution.userId,
+      userAgent: req.get('user-agent') ?? undefined,
+      ipAddress: req.ip,
+      mfaSatisfied: !requiresTwoFactor,
+    });
+
+    setSessionCookie(res, session.token);
+    setCsrfCookie(res, session.csrfToken);
+
+    const destination = state.redirectTo ?? loadConfig().appUrl;
+    const redirect = new URL(destination);
+    if (requiresTwoFactor) redirect.searchParams.set('step', 'two-factor');
+    if (resolution.created) redirect.searchParams.set('created', 'true');
+    res.redirect(303, redirect.toString());
+  } catch (error) {
+    if (isAppError(error) && error.status < 500) {
+      oauth.logOAuthCallbackFailure(provider, 'authentication_failed');
+      redirectOAuthFailure(res, provider, state.redirectTo, 'authentication_failed');
+      return;
+    }
+    throw error;
+  }
+}
+
+function redirectOAuthFailure(
+  res: Response,
+  provider: oauth.OAuthProviderKey,
+  destination: string | undefined,
+  reason:
+    | 'invalid_response'
+    | 'invalid_state'
+    | 'invalid_issuer'
+    | 'provider_error'
+    | 'authentication_failed',
+): void {
+  const redirect = new URL(destination ?? loadConfig().appUrl);
+  redirect.searchParams.set('oauth', 'failed');
+  redirect.searchParams.set('oauthProvider', provider);
+  redirect.searchParams.set('oauthReason', reason);
   res.redirect(303, redirect.toString());
 }
 

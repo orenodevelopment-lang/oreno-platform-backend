@@ -12,6 +12,7 @@ import {
 import { ErrorCode } from '../../common/errors/error-codes.js';
 
 const log = createModuleLogger('auth.oauth');
+const GOOGLE_AUTHORIZATION_ISSUER = 'https://accounts.google.com';
 
 /**
  * Federated sign-in.
@@ -62,6 +63,35 @@ export interface OAuthIdentity {
 export function isProviderConfigured(provider: string): provider is OAuthProviderKey {
   if (provider !== 'google' && provider !== 'linkedin') return false;
   return providerConfig(provider) !== undefined;
+}
+
+/**
+ * Google implements RFC 9207 and can identify its authorisation server in the
+ * callback. When present, that value must match Google's published issuer.
+ */
+export function isExpectedCallbackIssuer(
+  provider: OAuthProviderKey,
+  issuer: string | undefined,
+): boolean {
+  return provider !== 'google' || issuer === undefined || issuer === GOOGLE_AUTHORIZATION_ISSUER;
+}
+
+export function logOAuthCallbackFailure(
+  provider: OAuthProviderKey,
+  reason:
+    | 'invalid_response'
+    | 'invalid_state'
+    | 'invalid_issuer'
+    | 'provider_error'
+    | 'authentication_failed',
+  providerError?: string,
+): void {
+  const safeProviderError =
+    providerError && /^[A-Za-z0-9._-]{1,128}$/.test(providerError) ? providerError : undefined;
+  log.warn(
+    { provider, reason, ...(safeProviderError ? { providerError: safeProviderError } : {}) },
+    'oauth callback failed',
+  );
 }
 
 function providerConfig(provider: OAuthProviderKey): OAuthProviderConfig | undefined {

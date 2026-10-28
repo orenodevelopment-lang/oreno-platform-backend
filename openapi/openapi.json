@@ -1176,7 +1176,7 @@
       "get": {
         "operationId": "authOAuthCallback",
         "summary": "Complete a federated sign-in",
-        "description": "Exchanges the authorization code, resolves or creates the local account, sets the session cookies, and redirects the browser to the validated frontend callback URL.",
+        "description": "Accepts either an authorization code or a provider error, verifies and consumes the signed state, and redirects to the validated frontend URL. Successful sign-in sets the session cookies; failures redirect with controlled OAuth error parameters and never create a session.",
         "tags": [
           "auth"
         ],
@@ -1198,7 +1198,7 @@
           {
             "name": "code",
             "in": "query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string",
               "minLength": 1,
@@ -1214,14 +1214,89 @@
               "minLength": 1,
               "maxLength": 2048
             }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "error_uri",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "iss",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "authuser",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "prompt",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128
+            }
+          },
+          {
+            "name": "hd",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 253
+            }
           }
         ],
         "responses": {
           "303": {
-            "description": "Signed in. Session and CSRF cookies are set before redirecting to the frontend."
+            "description": "Redirected to the frontend after success or to a controlled OAuth failure state."
           },
-          "409": {
-            "$ref": "#/components/responses/Conflict"
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           },
           "422": {
             "$ref": "#/components/responses/Unprocessable"
