@@ -7,6 +7,7 @@ export function createMessagingRouter(): Router {
   const router = Router();
   router.get('/', authenticate(), asyncHandler(controller.listConversations));
   router.post('/', authenticate(), asyncHandler(controller.createConversation));
+  router.get('/contacts', authenticate(), asyncHandler(controller.listContacts));
   router.get('/:conversationId', authenticate(), asyncHandler(controller.getConversation));
   router.post(
     '/:conversationId/archive',

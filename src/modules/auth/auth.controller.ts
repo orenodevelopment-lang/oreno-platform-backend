@@ -435,8 +435,11 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
     res.redirect(303, redirect.toString());
   } catch (error) {
     if (isAppError(error) && error.status < 500) {
-      oauth.logOAuthCallbackFailure(provider, 'authentication_failed');
-      redirectOAuthFailure(res, provider, state.redirectTo, 'authentication_failed');
+      const reason = error.code === ErrorCode.OAUTH_ACCOUNT_NOT_FOUND
+        ? 'account_not_found'
+        : 'authentication_failed';
+      oauth.logOAuthCallbackFailure(provider, reason);
+      redirectOAuthFailure(res, provider, state.redirectTo, reason);
       return;
     }
     throw error;
@@ -452,6 +455,7 @@ function redirectOAuthFailure(
     | 'invalid_state'
     | 'invalid_issuer'
     | 'provider_error'
+    | 'account_not_found'
     | 'authentication_failed',
 ): void {
   const redirect = new URL(destination ?? loadConfig().appUrl);

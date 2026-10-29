@@ -127,6 +127,92 @@ async function validateMembers(
   return ids;
 }
 
+/**
+ * Return only people the current user is already allowed to message. This is
+ * deliberately narrower than the general user directory: a company user may
+ * see active colleagues and talents whose screening was released to one of
+ * their organisations, while a talent may see members of those organisations.
+ */
+export async function listEligibleContacts(auth: AuthContext) {
+  const prisma = getPrisma();
+  const [memberships, talentProfile] = await Promise.all([
+    prisma.organisationMembership.findMany({
+      where: { userId: auth.userId, status: 'ACTIVE' },
+      select: { organisationId: true },
+    }),
+    prisma.talentProfile.findUnique({
+      where: { userId: auth.userId },
+      select: { id: true },
+    }),
+  ]);
+  const organisationIds = memberships.map((membership) => membership.organisationId);
+  const relatedUserIds = new Set<string>();
+  const groupEligibleUserIds = new Set<string>();
+
+  if (organisationIds.length > 0) {
+    const [colleagues, releasedTalents] = await Promise.all([
+      prisma.organisationMembership.findMany({
+        where: { organisationId: { in: organisationIds }, status: 'ACTIVE' },
+        select: { userId: true, organisationId: true },
+      }),
+      prisma.application.findMany({
+        where: {
+          organisationId: { in: organisationIds },
+          screening: {
+            is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } },
+          },
+        },
+        select: { talentProfile: { select: { userId: true } } },
+      }),
+    ]);
+    colleagues.forEach((membership) => {
+      relatedUserIds.add(membership.userId);
+      if (membership.organisationId === auth.organisationId) {
+        groupEligibleUserIds.add(membership.userId);
+      }
+    });
+    releasedTalents.forEach((application) => relatedUserIds.add(application.talentProfile.userId));
+  }
+
+  if (talentProfile) {
+    const releasedApplications = await prisma.application.findMany({
+      where: {
+        talentProfileId: talentProfile.id,
+        screening: {
+          is: { status: 'RELEASED_TO_COMPANY', releasedToCompanyAt: { not: null } },
+        },
+      },
+      select: { organisationId: true },
+    });
+    const releasedOrganisationIds = [
+      ...new Set(releasedApplications.map((application) => application.organisationId)),
+    ];
+    if (releasedOrganisationIds.length > 0) {
+      const organisationMembers = await prisma.organisationMembership.findMany({
+        where: { organisationId: { in: releasedOrganisationIds }, status: 'ACTIVE' },
+        select: { userId: true },
+      });
+      organisationMembers.forEach((membership) => relatedUserIds.add(membership.userId));
+    }
+  }
+
+  relatedUserIds.delete(auth.userId);
+  if (relatedUserIds.size === 0) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: [...relatedUserIds] }, status: 'ACTIVE' },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      displayName: true,
+      avatarFileId: true,
+    },
+    orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }, { id: 'asc' }],
+    take: 200,
+  });
+  return users.map((user) => ({ ...user, groupEligible: groupEligibleUserIds.has(user.id) }));
+}
+
 export async function createConversation(
   auth: AuthContext,
   input: {

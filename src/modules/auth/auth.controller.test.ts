@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ForbiddenError } from '../../common/errors/app-error.js';
+import { ForbiddenError, UnauthenticatedError } from '../../common/errors/app-error.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 
 const mocks = vi.hoisted(() => ({
@@ -249,5 +249,32 @@ describe('OAuth callback controller', () => {
     expect(mocks.exchangeCodeForIdentity).not.toHaveBeenCalled();
     expect(mocks.createSession).not.toHaveBeenCalled();
     expect(redirectedUrl(response).searchParams.get('oauthReason')).toBe('invalid_response');
+  });
+
+  it('redirects an unknown provider identity to a controlled account-not-found state', async () => {
+    mocks.resolveOAuthUser.mockRejectedValueOnce(
+      new UnauthenticatedError(
+        ErrorCode.OAUTH_ACCOUNT_NOT_FOUND,
+        'No Oreno account uses that provider identity.',
+      ),
+    );
+    const response = callbackResponse();
+
+    await handleOAuthCallback(
+      callbackRequest({
+        code: 'google-code',
+        state: 'signed-state',
+        iss: 'https://accounts.google.com',
+      }),
+      response,
+    );
+
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.setSessionCookie).not.toHaveBeenCalled();
+    expect(redirectedUrl(response).searchParams.get('oauthReason')).toBe('account_not_found');
+    expect(mocks.logOAuthCallbackFailure).toHaveBeenCalledWith(
+      'google',
+      'account_not_found',
+    );
   });
 });

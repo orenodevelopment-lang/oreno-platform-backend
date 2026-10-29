@@ -159,7 +159,7 @@ export async function resolveOAuthUser(
       detail: { provider, reason: 'account_not_found' },
     });
     throw new UnauthenticatedError(
-      ErrorCode.INVALID_CREDENTIALS,
+      ErrorCode.OAUTH_ACCOUNT_NOT_FOUND,
       'No Oreno account uses that provider identity. Create a talent account first.',
     );
   }

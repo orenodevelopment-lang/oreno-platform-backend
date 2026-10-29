@@ -83,6 +83,7 @@ export function logOAuthCallbackFailure(
     | 'invalid_state'
     | 'invalid_issuer'
     | 'provider_error'
+    | 'account_not_found'
     | 'authentication_failed',
   providerError?: string,
 ): void {

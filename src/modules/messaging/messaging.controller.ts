@@ -50,6 +50,12 @@ export async function listConversations(req: Request, res: Response): Promise<vo
   );
 }
 
+export async function listContacts(req: Request, res: Response): Promise<void> {
+  sendSuccess(res, {
+    contacts: await service.listEligibleContacts(requireAuthContext(req)),
+  });
+}
+
 export async function getConversation(req: Request, res: Response): Promise<void> {
   const { params } = validate(req, { params: conversationParamsSchema });
   sendSuccess(res, {

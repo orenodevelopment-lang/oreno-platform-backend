@@ -84,7 +84,7 @@ const groups: Group[] = [
   { prefix: '/api/v1/organisations/{organisationId}', tag: 'reporting', routes: ['GET /dashboard'] },
   { prefix: '/api/v1/files', tag: 'files', routes: ['POST /uploads','POST /{fileId}/complete','GET /{fileId}','POST /{fileId}/download','DELETE /{fileId}'] },
   { prefix: '/api/v1/notifications', tag: 'notifications', routes: ['GET /','POST /read-all','GET /preferences','PUT /preferences','POST /{notificationId}/read','DELETE /{notificationId}'] },
-  { prefix: '/api/v1/conversations', tag: 'messaging', routes: ['GET /','POST /','GET /{conversationId}','POST /{conversationId}/archive','POST /{conversationId}/leave','GET /{conversationId}/messages','POST /{conversationId}/messages','PATCH /{conversationId}/messages/{messageId}','DELETE /{conversationId}/messages/{messageId}','POST /{conversationId}/read'] },
+  { prefix: '/api/v1/conversations', tag: 'messaging', routes: ['GET /','POST /','GET /contacts','GET /{conversationId}','POST /{conversationId}/archive','POST /{conversationId}/leave','GET /{conversationId}/messages','POST /{conversationId}/messages','PATCH /{conversationId}/messages/{messageId}','DELETE /{conversationId}/messages/{messageId}','POST /{conversationId}/read'] },
   { prefix: '/api/v1/support', tag: 'support', routes: ['GET /cases','POST /cases','GET /cases/{caseId}','POST /cases/{caseId}/notes','POST /cases/{caseId}/reopen'] },
   { prefix: '/api/v1/search', tag: 'search', routes: ['GET /'] },
   { prefix: '/api/v1/admin', tag: 'admin', routes: [
@@ -579,6 +579,7 @@ const responseSchemas = new Map<string, ZodTypeAny>([
   ['post /api/v1/notifications/{notificationId}/read', resource('notification')],
   ['get /api/v1/conversations', collection('conversations')],
   ['post /api/v1/conversations', resource('conversation')],
+  ['get /api/v1/conversations/contacts', collection('contacts')],
   ['get /api/v1/conversations/{conversationId}', resource('conversation')],
   ['post /api/v1/conversations/{conversationId}/archive', resource('conversation')],
   ['get /api/v1/conversations/{conversationId}/messages', collection('messages')],
